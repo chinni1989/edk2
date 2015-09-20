@@ -190,13 +190,17 @@ ParseCommandLineToArgs(
   @param[in, out] Walker        pointer to string of command line.  Adjusted to
                                 reminaing command line on return
   @param[in, out] TempParameter pointer to string of command line item extracted.
+  @param[in]      Length        Length of (*TempParameter) in bytes
 
+  @return   EFI_INALID_PARAMETER  A required parameter was NULL or pointed to a NULL or empty string.
+  @return   EFI_NOT_FOUND         A closing " could not be found on the specified string
 **/
-VOID
+EFI_STATUS
 EFIAPI
 GetNextParameter(
-  CHAR16 **Walker,
-  CHAR16 **TempParameter
+  IN OUT CHAR16   **Walker,
+  IN OUT CHAR16   **TempParameter,
+  IN CONST UINTN  Length
   );
 
 #endif //_SHELL_PARAMETERS_PROTOCOL_PROVIDER_HEADER_

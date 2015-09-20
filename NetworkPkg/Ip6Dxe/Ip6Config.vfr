@@ -21,8 +21,6 @@ formset
   guid     = IP6_CONFIG_NVDATA_GUID,
   title    = STRING_TOKEN(STR_IP6_CONFIG_FORM_TITLE),
   help     = STRING_TOKEN(STR_IP6_CONFIG_FORM_HELP),
-  class    = EFI_NETWORK_DEVICE_CLASS,
-  subclass = 0x03,
 
   varstore IP6_CONFIG_IFR_NVDATA,
     name = IP6_CONFIG_IFR_NVDATA,
@@ -127,7 +125,6 @@ formset
     text
       help   = STRING_TOKEN (STR_SAVE_CHANGES_HELP),
       text   = STRING_TOKEN (STR_SAVE_CHANGES),
-        text   = STRING_TOKEN (STR_NULL),
       flags  = INTERACTIVE,
       key    = KEY_SAVE_CHANGES;
 
@@ -166,14 +163,12 @@ formset
     text
       help   = STRING_TOKEN (STR_SAVE_AND_EXIT),
       text   = STRING_TOKEN (STR_SAVE_AND_EXIT),
-        text   = STRING_TOKEN (STR_SAVE_AND_EXIT),
       flags  = INTERACTIVE,
       key    = KEY_SAVE_CONFIG_CHANGES;
 
     text
       help   = STRING_TOKEN (STR_NO_SAVE_AND_EXIT),
       text   = STRING_TOKEN (STR_NO_SAVE_AND_EXIT),
-        text   = STRING_TOKEN (STR_NO_SAVE_AND_EXIT),
       flags  = INTERACTIVE,
       key    = KEY_IGNORE_CONFIG_CHANGES;
 

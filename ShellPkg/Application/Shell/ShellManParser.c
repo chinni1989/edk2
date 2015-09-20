@@ -1,7 +1,7 @@
 /** @file
   Provides interface to shell MAN file parser.
 
-  Copyright (c) 2009 - 2013, Intel Corporation. All rights reserved.<BR>
+  Copyright (c) 2009 - 2015, Intel Corporation. All rights reserved.<BR>
   This program and the accompanying materials
   are licensed and made available under the terms and conditions of the BSD License
   which accompanies this distribution.  The full text of the license may be found at
@@ -39,15 +39,20 @@ GetManFileName(
   // Fix the file name
   //
   if (StrnCmp(ManFileName+StrLen(ManFileName)-4, L".man", 4)==0) {
-    Buffer = AllocateZeroPool(StrSize(ManFileName));
-    if (Buffer != NULL) {
-      StrCpy(Buffer, ManFileName);
-    }
+    Buffer = AllocateCopyPool(StrSize(ManFileName), ManFileName);
   } else {
     Buffer = AllocateZeroPool(StrSize(ManFileName) + 4*sizeof(CHAR16));
     if (Buffer != NULL) {
-      StrCpy(Buffer, ManFileName);
-      StrCat(Buffer, L".man");
+      StrnCpyS( Buffer, 
+                (StrSize(ManFileName) + 4*sizeof(CHAR16))/sizeof(CHAR16), 
+                ManFileName, 
+                StrLen(ManFileName)
+                );
+      StrnCatS( Buffer, 
+                (StrSize(ManFileName) + 4*sizeof(CHAR16))/sizeof(CHAR16),
+                L".man", 
+                4
+                );
     }
   }
   return (Buffer);
@@ -374,6 +379,9 @@ ManBufferFindTitleSection(
   CHAR16        *TitleString;
   CHAR16        *TitleEnd;
   CHAR16        *CurrentLocation;
+  UINTN         TitleLength;
+  CONST CHAR16  StartString[] = L".TH ";
+  CONST CHAR16  EndString[]   = L" 0 ";
 
   if ( Buffer     == NULL
     || Command    == NULL
@@ -384,13 +392,17 @@ ManBufferFindTitleSection(
 
   Status    = EFI_SUCCESS;
 
-  TitleString = AllocateZeroPool((7*sizeof(CHAR16)) + StrSize(Command));
+  //
+  // more characters for StartString and EndString
+  //
+  TitleLength = StrSize(Command) + (StrLen(StartString) + StrLen(EndString)) * sizeof(CHAR16);
+  TitleString = AllocateZeroPool(TitleLength);
   if (TitleString == NULL) {
     return (EFI_OUT_OF_RESOURCES);
   }
-  StrCpy(TitleString, L".TH ");
-  StrCat(TitleString, Command);
-  StrCat(TitleString, L" 0 ");
+  StrCpyS(TitleString, TitleLength/sizeof(CHAR16), StartString);
+  StrCatS(TitleString, TitleLength/sizeof(CHAR16), Command);
+  StrCatS(TitleString, TitleLength/sizeof(CHAR16), EndString);
 
   CurrentLocation = StrStr(*Buffer, TitleString);
   if (CurrentLocation == NULL){
@@ -414,7 +426,7 @@ ManBufferFindTitleSection(
         if (*BriefDesc == NULL) {
           Status = EFI_OUT_OF_RESOURCES;
         } else {
-          StrnCpy(*BriefDesc, CurrentLocation, TitleEnd-CurrentLocation);
+          StrnCpyS(*BriefDesc, (*BriefSize)/sizeof(CHAR16), CurrentLocation, TitleEnd-CurrentLocation);
         }
       }
 
@@ -467,6 +479,7 @@ ManFileFindTitleSection(
   CHAR16      *TitleEnd;
   UINTN       TitleLen;
   BOOLEAN     Found;
+  UINTN       TitleSize;
 
   if ( Handle     == NULL
     || Command    == NULL
@@ -484,13 +497,14 @@ ManFileFindTitleSection(
     return (EFI_OUT_OF_RESOURCES);
   }
 
-  TitleString = AllocateZeroPool((4*sizeof(CHAR16)) + StrSize(Command));
+  TitleSize = (4*sizeof(CHAR16)) + StrSize(Command);
+  TitleString = AllocateZeroPool(TitleSize);
   if (TitleString == NULL) {
     FreePool(ReadLine);
     return (EFI_OUT_OF_RESOURCES);
   }
-  StrCpy(TitleString, L".TH ");
-  StrCat(TitleString, Command);
+  StrCpyS(TitleString, TitleSize/sizeof(CHAR16), L".TH ");
+  StrCatS(TitleString, TitleSize/sizeof(CHAR16), Command);
 
   TitleLen = StrLen(TitleString);
   for (;!ShellFileHandleEof(Handle);Size = 1024) {
@@ -526,7 +540,7 @@ ManFileFindTitleSection(
           Status = EFI_OUT_OF_RESOURCES;
           break;
         }
-        StrCpy(*BriefDesc, TitleEnd);
+        StrCpyS(*BriefDesc, (*BriefSize)/sizeof(CHAR16), TitleEnd);
       }
       break;
     }
@@ -599,6 +613,7 @@ ProcessManFile(
   HelpSize    = 0;
   BriefSize   = 0;
   TempString  = NULL;
+  Ascii       = FALSE;
   //
   // See if it's in HII first
   //

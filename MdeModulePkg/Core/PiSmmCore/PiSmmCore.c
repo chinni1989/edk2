@@ -1,7 +1,7 @@
 /** @file
   SMM Core Main Entry Point
 
-  Copyright (c) 2009 - 2012, Intel Corporation. All rights reserved.<BR>
+  Copyright (c) 2009 - 2015, Intel Corporation. All rights reserved.<BR>
   This program and the accompanying materials are licensed and made available 
   under the terms and conditions of the BSD License which accompanies this 
   distribution.  The full text of the license may be found at        
@@ -66,7 +66,7 @@ EFI_SMM_SYSTEM_TABLE2  gSmmCoreSmst = {
 //
 // Flag to determine if the platform has performed a legacy boot.
 // If this flag is TRUE, then the runtime code and runtime data associated with the 
-// SMM IPL are converted to free memory, so the SMM COre must guarantee that is
+// SMM IPL are converted to free memory, so the SMM Core must guarantee that is
 // does not touch of the code/data associated with the SMM IPL if this flag is TRUE.
 //
 BOOLEAN  mInLegacyBoot = FALSE;
@@ -75,12 +75,17 @@ BOOLEAN  mInLegacyBoot = FALSE;
 // Table of SMI Handlers that are registered by the SMM Core when it is initialized
 //
 SMM_CORE_SMI_HANDLERS  mSmmCoreSmiHandlers[] = {
-  { SmmDriverDispatchHandler, &gEfiEventDxeDispatchGuid,          NULL, TRUE  },
-  { SmmReadyToLockHandler,    &gEfiDxeSmmReadyToLockProtocolGuid, NULL, TRUE }, 
-  { SmmLegacyBootHandler,     &gEfiEventLegacyBootGuid,           NULL, FALSE },
-  { SmmEndOfDxeHandler,       &gEfiEndOfDxeEventGroupGuid,        NULL, FALSE },
-  { NULL,                     NULL,                               NULL, FALSE }
+  { SmmDriverDispatchHandler,   &gEfiEventDxeDispatchGuid,          NULL, TRUE  },
+  { SmmReadyToLockHandler,      &gEfiDxeSmmReadyToLockProtocolGuid, NULL, TRUE }, 
+  { SmmLegacyBootHandler,       &gEfiEventLegacyBootGuid,           NULL, FALSE },
+  { SmmExitBootServicesHandler, &gEfiEventExitBootServicesGuid,     NULL, FALSE },
+  { SmmReadyToBootHandler,      &gEfiEventReadyToBootGuid,          NULL, FALSE },
+  { SmmEndOfDxeHandler,         &gEfiEndOfDxeEventGroupGuid,        NULL, TRUE },
+  { NULL,                       NULL,                               NULL, FALSE }
 };
+
+UINTN                           mFullSmramRangeCount;
+EFI_SMRAM_DESCRIPTOR            *mFullSmramRanges;
 
 /**
   Place holder function until all the SMM System Table Service are available.
@@ -118,7 +123,8 @@ SmmEfiNotAvailableYetArg5 (
   Core uses this signal to know that a Legacy Boot has been performed and that 
   gSmmCorePrivate that is shared between the UEFI and SMM execution environments can
   not be accessed from SMM anymore since that structure is considered free memory by
-  a legacy OS.
+  a legacy OS. Then the SMM Core also install SMM Legacy Boot protocol to notify SMM
+  driver that system enter legacy boot.
 
   @param  DispatchHandle  The unique handle assigned to this handler by SmiHandlerRegister().
   @param  Context         Points to an optional handler context which was specified when the handler was registered.
@@ -138,8 +144,109 @@ SmmLegacyBootHandler (
   IN OUT UINTN       *CommBufferSize  OPTIONAL
   )
 {
+  EFI_STATUS    Status;
+  EFI_HANDLE    SmmHandle;
+
+  //
+  // Install SMM Legacy Boot protocol.
+  //
+  SmmHandle = NULL;
+  Status = SmmInstallProtocolInterface (
+             &SmmHandle,
+             &gEdkiiSmmLegacyBootProtocolGuid,
+             EFI_NATIVE_INTERFACE,
+             NULL
+             );
+
   mInLegacyBoot = TRUE;
-  return EFI_SUCCESS;
+
+  SmiHandlerUnRegister (DispatchHandle);
+
+  return Status;
+}
+
+/**
+  Software SMI handler that is called when an Exit Boot Services event is signalled.
+  Then the SMM Core also install SMM Exit Boot Services protocol to notify SMM driver
+  that system enter exit boot services.
+
+  @param  DispatchHandle  The unique handle assigned to this handler by SmiHandlerRegister().
+  @param  Context         Points to an optional handler context which was specified when the handler was registered.
+  @param  CommBuffer      A pointer to a collection of data in memory that will
+                          be conveyed from a non-SMM environment into an SMM environment.
+  @param  CommBufferSize  The size of the CommBuffer.
+
+  @return Status Code
+
+**/
+EFI_STATUS
+EFIAPI
+SmmExitBootServicesHandler (
+  IN     EFI_HANDLE  DispatchHandle,
+  IN     CONST VOID  *Context,        OPTIONAL
+  IN OUT VOID        *CommBuffer,     OPTIONAL
+  IN OUT UINTN       *CommBufferSize  OPTIONAL
+  )
+{
+  EFI_STATUS    Status;
+  EFI_HANDLE    SmmHandle;
+
+  //
+  // Install SMM Exit Boot Services protocol.
+  //
+  SmmHandle = NULL;
+  Status = SmmInstallProtocolInterface (
+             &SmmHandle,
+             &gEdkiiSmmExitBootServicesProtocolGuid,
+             EFI_NATIVE_INTERFACE,
+             NULL
+             );
+
+  SmiHandlerUnRegister (DispatchHandle);
+
+  return Status;
+}
+
+/**
+  Software SMI handler that is called when an Ready To Boot event is signalled.
+  Then the SMM Core also install SMM Ready To Boot protocol to notify SMM driver
+  that system enter ready to boot.
+
+  @param  DispatchHandle  The unique handle assigned to this handler by SmiHandlerRegister().
+  @param  Context         Points to an optional handler context which was specified when the handler was registered.
+  @param  CommBuffer      A pointer to a collection of data in memory that will
+                          be conveyed from a non-SMM environment into an SMM environment.
+  @param  CommBufferSize  The size of the CommBuffer.
+
+  @return Status Code
+
+**/
+EFI_STATUS
+EFIAPI
+SmmReadyToBootHandler (
+  IN     EFI_HANDLE  DispatchHandle,
+  IN     CONST VOID  *Context,        OPTIONAL
+  IN OUT VOID        *CommBuffer,     OPTIONAL
+  IN OUT UINTN       *CommBufferSize  OPTIONAL
+  )
+{
+  EFI_STATUS    Status;
+  EFI_HANDLE    SmmHandle;
+
+  //
+  // Install SMM Ready To Boot protocol.
+  //
+  SmmHandle = NULL;
+  Status = SmmInstallProtocolInterface (
+             &SmmHandle,
+             &gEdkiiSmmReadyToBootProtocolGuid,
+             EFI_NATIVE_INTERFACE,
+             NULL
+             );
+
+  SmiHandlerUnRegister (DispatchHandle);
+
+  return Status;
 }
 
 /**
@@ -226,6 +333,8 @@ SmmReadyToLockHandler (
   gST = NULL;
   gBS = NULL;
 
+  SmramProfileReadyToLock ();
+
   return Status;
 }
 
@@ -266,7 +375,38 @@ SmmEndOfDxeHandler (
              EFI_NATIVE_INTERFACE,
              NULL
              );
-  return EFI_SUCCESS;
+  return Status;
+}
+
+/**
+  Determine if two buffers overlap in memory.
+
+  @param[in] Buff1  Pointer to first buffer
+  @param[in] Size1  Size of Buff1
+  @param[in] Buff2  Pointer to second buffer
+  @param[in] Size2  Size of Buff2
+
+  @retval TRUE      Buffers overlap in memory.
+  @retval FALSE     Buffer doesn't overlap.
+
+**/
+BOOLEAN
+InternalIsBufferOverlapped (
+  IN UINT8      *Buff1,
+  IN UINTN      Size1,
+  IN UINT8      *Buff2,
+  IN UINTN      Size2
+  )
+{
+  //
+  // If buff1's end is less than the start of buff2, then it's ok.
+  // Also, if buff1's start is beyond buff2's end, then it's ok.
+  //
+  if (((Buff1 + Size1) <= Buff2) || (Buff1 >= (Buff2 + Size2))) {
+    return FALSE;
+  }
+
+  return TRUE;
 }
 
 /**
@@ -287,6 +427,7 @@ SmmEntryPoint (
   EFI_STATUS                  Status;
   EFI_SMM_COMMUNICATE_HEADER  *CommunicateHeader;
   BOOLEAN                     InLegacyBoot;
+  BOOLEAN                     IsOverlapped;
 
   PERF_START (NULL, "SMM", NULL, 0) ;
 
@@ -318,22 +459,37 @@ SmmEntryPoint (
       //
       // Synchronous SMI for SMM Core or request from Communicate protocol
       //
-      CommunicateHeader = (EFI_SMM_COMMUNICATE_HEADER *)gSmmCorePrivate->CommunicationBuffer;
-      gSmmCorePrivate->BufferSize -= OFFSET_OF (EFI_SMM_COMMUNICATE_HEADER, Data);
-      Status = SmiManage (
-                 &CommunicateHeader->HeaderGuid, 
-                 NULL, 
-                 CommunicateHeader->Data, 
-                 &gSmmCorePrivate->BufferSize
-                 );
-
-      //
-      // Update CommunicationBuffer, BufferSize and ReturnStatus
-      // Communicate service finished, reset the pointer to CommBuffer to NULL
-      //
-      gSmmCorePrivate->BufferSize += OFFSET_OF (EFI_SMM_COMMUNICATE_HEADER, Data);
-      gSmmCorePrivate->CommunicationBuffer = NULL;
-      gSmmCorePrivate->ReturnStatus = (Status == EFI_SUCCESS) ? EFI_SUCCESS : EFI_NOT_FOUND;
+      IsOverlapped = InternalIsBufferOverlapped (
+                       (UINT8 *) gSmmCorePrivate->CommunicationBuffer,
+                       gSmmCorePrivate->BufferSize,
+                       (UINT8 *) gSmmCorePrivate,
+                       sizeof (*gSmmCorePrivate)
+                       );
+      if (!SmmIsBufferOutsideSmmValid ((UINTN)gSmmCorePrivate->CommunicationBuffer, gSmmCorePrivate->BufferSize) || IsOverlapped) {
+        //
+        // If CommunicationBuffer is not in valid address scope,
+        // or there is overlap between gSmmCorePrivate and CommunicationBuffer,
+        // return EFI_INVALID_PARAMETER
+        //
+        gSmmCorePrivate->CommunicationBuffer = NULL;
+        gSmmCorePrivate->ReturnStatus = EFI_INVALID_PARAMETER;
+      } else {
+        CommunicateHeader = (EFI_SMM_COMMUNICATE_HEADER *)gSmmCorePrivate->CommunicationBuffer;
+        gSmmCorePrivate->BufferSize -= OFFSET_OF (EFI_SMM_COMMUNICATE_HEADER, Data);
+        Status = SmiManage (
+                   &CommunicateHeader->HeaderGuid, 
+                   NULL, 
+                   CommunicateHeader->Data, 
+                   &gSmmCorePrivate->BufferSize
+                   );
+        //
+        // Update CommunicationBuffer, BufferSize and ReturnStatus
+        // Communicate service finished, reset the pointer to CommBuffer to NULL
+        //
+        gSmmCorePrivate->BufferSize += OFFSET_OF (EFI_SMM_COMMUNICATE_HEADER, Data);
+        gSmmCorePrivate->CommunicationBuffer = NULL;
+        gSmmCorePrivate->ReturnStatus = (Status == EFI_SUCCESS) ? EFI_SUCCESS : EFI_NOT_FOUND;
+      }
     }
   }
 
@@ -397,9 +553,20 @@ SmmMain (
   gSmmCorePrivate->SmmEntryPoint = SmmEntryPoint;
   
   //
-  // Initialize memory service using free SMRAM
+  // No need to initialize memory service.
+  // It is done in constructor of PiSmmCoreMemoryAllocationLib(),
+  // so that the library linked with PiSmmCore can use AllocatePool() in constuctor.
   //
-  SmmInitializeMemoryServices (gSmmCorePrivate->SmramRangeCount, gSmmCorePrivate->SmramRanges);
+
+  SmramProfileInit ();
+
+  //
+  // Copy FullSmramRanges to SMRAM
+  //
+  mFullSmramRangeCount = gSmmCorePrivate->SmramRangeCount;
+  mFullSmramRanges = AllocatePool (mFullSmramRangeCount * sizeof (EFI_SMRAM_DESCRIPTOR));
+  ASSERT (mFullSmramRanges != NULL);
+  CopyMem (mFullSmramRanges, gSmmCorePrivate->SmramRanges, mFullSmramRangeCount * sizeof (EFI_SMRAM_DESCRIPTOR));
 
   //
   // Register all SMI Handlers required by the SMM Core
@@ -412,6 +579,8 @@ SmmMain (
                );
     ASSERT_EFI_ERROR (Status);
   }
-  
+
+  RegisterSmramProfileHandler ();
+
   return EFI_SUCCESS;
 }

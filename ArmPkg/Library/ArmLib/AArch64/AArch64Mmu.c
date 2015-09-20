@@ -1,7 +1,7 @@
 /** @file
 *  File managing the MMU for ARMv8 architecture
 *
-*  Copyright (c) 2011-2013, ARM Limited. All rights reserved.
+*  Copyright (c) 2011-2014, ARM Limited. All rights reserved.
 *
 *  This program and the accompanying materials
 *  are licensed and made available under the terms and conditions of the BSD License
@@ -244,13 +244,14 @@ GetBlockEntryListFromAddress (
   IN  UINT64        RegionStart,
   OUT UINTN        *TableLevel,
   IN OUT UINT64    *BlockEntrySize,
-  IN OUT UINT64   **LastBlockEntry
+  OUT UINT64      **LastBlockEntry
   )
 {
   UINTN   RootTableLevel;
   UINTN   RootTableEntryCount;
   UINT64 *TranslationTable;
   UINT64 *BlockEntry;
+  UINT64 *SubTableBlockEntry;
   UINT64  BlockEntryAddress;
   UINTN   BaseAddressAlignment;
   UINTN   PageLevel;
@@ -264,38 +265,34 @@ GetBlockEntryListFromAddress (
   BlockEntry = NULL;
 
   // Ensure the parameters are valid
-  ASSERT (TableLevel && BlockEntrySize && LastBlockEntry);
+  if (!(TableLevel && BlockEntrySize && LastBlockEntry)) {
+    ASSERT_EFI_ERROR (EFI_INVALID_PARAMETER);
+    return NULL;
+  }
 
   // Ensure the Region is aligned on 4KB boundary
-  ASSERT ((RegionStart & (SIZE_4KB - 1)) == 0);
+  if ((RegionStart & (SIZE_4KB - 1)) != 0) {
+    ASSERT_EFI_ERROR (EFI_INVALID_PARAMETER);
+    return NULL;
+  }
 
-  // Ensure the required size is aligned on 4KB boundary
-  ASSERT ((*BlockEntrySize & (SIZE_4KB - 1)) == 0);
+  // Ensure the required size is aligned on 4KB boundary and not 0
+  if ((*BlockEntrySize & (SIZE_4KB - 1)) != 0 || *BlockEntrySize == 0) {
+    ASSERT_EFI_ERROR (EFI_INVALID_PARAMETER);
+    return NULL;
+  }
 
-  //
-  // Calculate LastBlockEntry from T0SZ - this is the last block entry of the root Translation table
-  //
   T0SZ = ArmGetTCR () & TCR_T0SZ_MASK;
   // Get the Table info from T0SZ
   GetRootTranslationTableInfo (T0SZ, &RootTableLevel, &RootTableEntryCount);
-  // The last block of the root table depends on the number of entry in this table
-  *LastBlockEntry = TT_LAST_BLOCK_ADDRESS(RootTable, RootTableEntryCount);
 
   // If the start address is 0x0 then we use the size of the region to identify the alignment
   if (RegionStart == 0) {
     // Identify the highest possible alignment for the Region Size
-    for (BaseAddressAlignment = 0; BaseAddressAlignment < 64; BaseAddressAlignment++) {
-      if ((1 << BaseAddressAlignment) & *BlockEntrySize) {
-        break;
-      }
-    }
+    BaseAddressAlignment = LowBitSet64 (*BlockEntrySize);
   } else {
     // Identify the highest possible alignment for the Base Address
-    for (BaseAddressAlignment = 0; BaseAddressAlignment < 64; BaseAddressAlignment++) {
-      if ((1 << BaseAddressAlignment) & RegionStart) {
-        break;
-      }
-    }
+    BaseAddressAlignment = LowBitSet64 (RegionStart);
   }
 
   // Identify the Page Level the RegionStart must belongs to
@@ -304,16 +301,10 @@ GetBlockEntryListFromAddress (
   // If the required size is smaller than the current block size then we need to go to the page below.
   // The PageLevel was calculated on the Base Address alignment but did not take in account the alignment
   // of the allocation size
-  if (*BlockEntrySize < TT_BLOCK_ENTRY_SIZE_AT_LEVEL (PageLevel)) {
+  while (*BlockEntrySize < TT_BLOCK_ENTRY_SIZE_AT_LEVEL (PageLevel)) {
     // It does not fit so we need to go a page level above
     PageLevel++;
   }
-
-  // Expose the found PageLevel to the caller
-  *TableLevel = PageLevel;
-
-  // Now, we have the Table Level we can get the Block Size associated to this table
-  *BlockEntrySize = TT_BLOCK_ENTRY_SIZE_AT_LEVEL (PageLevel);
 
   //
   // Get the Table Descriptor for the corresponding PageLevel. We need to decompose RegionStart to get appropriate entries
@@ -327,13 +318,10 @@ GetBlockEntryListFromAddress (
       // Go to the next table
       TranslationTable = (UINT64*)(*BlockEntry & TT_ADDRESS_MASK_DESCRIPTION_TABLE);
 
-      // If we are at the last level then update the output
+      // If we are at the last level then update the last level to next level
       if (IndexLevel == PageLevel) {
-        // And get the appropriate BlockEntry at the next level
-        BlockEntry = (UINT64*)TT_GET_ENTRY_FOR_ADDRESS (TranslationTable, IndexLevel + 1, RegionStart);
-
-        // Set the last block for this new table
-        *LastBlockEntry = TT_LAST_BLOCK_ADDRESS(TranslationTable, TT_ENTRY_COUNT);
+        // Enter the next level
+        PageLevel++;
       }
     } else if ((*BlockEntry & TT_TYPE_MASK) == TT_TYPE_BLOCK_ENTRY) {
       // If we are not at the last level then we need to split this BlockEntry
@@ -367,45 +355,51 @@ GetBlockEntryListFromAddress (
         }
 
         // Create a new translation table
-        TranslationTable = (UINT64*)AllocatePages (EFI_SIZE_TO_PAGES((TT_ENTRY_COUNT * sizeof(UINT64)) + TT_ALIGNMENT_DESCRIPTION_TABLE));
+        TranslationTable = (UINT64*)AllocateAlignedPages (EFI_SIZE_TO_PAGES(TT_ENTRY_COUNT * sizeof(UINT64)), TT_ALIGNMENT_DESCRIPTION_TABLE);
         if (TranslationTable == NULL) {
           return NULL;
         }
-        TranslationTable = (UINT64*)((UINTN)TranslationTable & TT_ADDRESS_MASK_DESCRIPTION_TABLE);
+
+        // Populate the newly created lower level table
+        SubTableBlockEntry = TranslationTable;
+        for (Index = 0; Index < TT_ENTRY_COUNT; Index++) {
+          *SubTableBlockEntry = Attributes | (BlockEntryAddress + (Index << TT_ADDRESS_OFFSET_AT_LEVEL(IndexLevel + 1)));
+          SubTableBlockEntry++;
+        }
 
         // Fill the BlockEntry with the new TranslationTable
         *BlockEntry = ((UINTN)TranslationTable & TT_ADDRESS_MASK_DESCRIPTION_TABLE) | TableAttributes | TT_TYPE_TABLE_ENTRY;
-        // Update the last block entry with the newly created translation table
-        *LastBlockEntry = TT_LAST_BLOCK_ADDRESS(TranslationTable, TT_ENTRY_COUNT);
-
-        // Populate the newly created lower level table
-        BlockEntry = TranslationTable;
-        for (Index = 0; Index < TT_ENTRY_COUNT; Index++) {
-          *BlockEntry = Attributes | (BlockEntryAddress + (Index << TT_ADDRESS_OFFSET_AT_LEVEL(IndexLevel + 1)));
-          BlockEntry++;
-        }
-        // Block Entry points at the beginning of the Translation Table
-        BlockEntry = TranslationTable;
       }
     } else {
-      // Case of Invalid Entry and we are at a page level above of the one targetted.
       if (IndexLevel != PageLevel) {
+        //
+        // Case when we have an Invalid Entry and we are at a page level above of the one targetted.
+        //
+
         // Create a new translation table
-        TranslationTable = (UINT64*)AllocatePages (EFI_SIZE_TO_PAGES((TT_ENTRY_COUNT * sizeof(UINT64)) + TT_ALIGNMENT_DESCRIPTION_TABLE));
+        TranslationTable = (UINT64*)AllocateAlignedPages (EFI_SIZE_TO_PAGES(TT_ENTRY_COUNT * sizeof(UINT64)), TT_ALIGNMENT_DESCRIPTION_TABLE);
         if (TranslationTable == NULL) {
           return NULL;
         }
-        TranslationTable = (UINT64*)((UINTN)TranslationTable & TT_ADDRESS_MASK_DESCRIPTION_TABLE);
 
         ZeroMem (TranslationTable, TT_ENTRY_COUNT * sizeof(UINT64));
 
         // Fill the new BlockEntry with the TranslationTable
         *BlockEntry = ((UINTN)TranslationTable & TT_ADDRESS_MASK_DESCRIPTION_TABLE) | TT_TYPE_TABLE_ENTRY;
-        // Update the last block entry with the newly created translation table
-        *LastBlockEntry = TT_LAST_BLOCK_ADDRESS(TranslationTable, TT_ENTRY_COUNT);
       }
     }
   }
+
+  // Expose the found PageLevel to the caller
+  *TableLevel = PageLevel;
+
+  // Now, we have the Table Level we can get the Block Size associated to this table
+  *BlockEntrySize = TT_BLOCK_ENTRY_SIZE_AT_LEVEL (PageLevel);
+
+  // The last block of the root table depends on the number of entry in this table,
+  // otherwise it is always the (TT_ENTRY_COUNT - 1)th entry in the table.
+  *LastBlockEntry = TT_LAST_BLOCK_ADDRESS(TranslationTable,
+      (PageLevel == RootTableLevel) ? RootTableEntryCount : TT_ENTRY_COUNT);
 
   return BlockEntry;
 }
@@ -427,7 +421,10 @@ FillTranslationTable (
   UINTN   TableLevel;
 
   // Ensure the Length is aligned on 4KB boundary
-  ASSERT ((MemoryRegion->Length > 0) && ((MemoryRegion->Length & (SIZE_4KB - 1)) == 0));
+  if ((MemoryRegion->Length == 0) || ((MemoryRegion->Length & (SIZE_4KB - 1)) != 0)) {
+    ASSERT_EFI_ERROR (EFI_INVALID_PARAMETER);
+    return RETURN_INVALID_PARAMETER;
+  }
 
   // Variable initialization
   Attributes = ArmMemoryAttributeToPageAttribute (MemoryRegion->Attributes) | TT_AF;
@@ -458,6 +455,13 @@ FillTranslationTable (
       RegionStart += BlockEntrySize;
       RemainingRegionLength -= BlockEntrySize;
       BlockEntry++;
+
+      // Break the inner loop when next block is a table
+      // Rerun GetBlockEntryListFromAddress to avoid page table memory leak
+      if (TableLevel != 3 &&
+          (*BlockEntry & TT_TYPE_MASK) == TT_TYPE_TABLE_ENTRY) {
+            break;
+      }
     } while ((RemainingRegionLength >= BlockEntrySize) && (BlockEntry <= LastBlockEntry));
   } while (RemainingRegionLength != 0);
 
@@ -519,7 +523,10 @@ ArmConfigureMmu (
   UINT64                        TCR;
   RETURN_STATUS                 Status;
 
-  ASSERT (MemoryTable != NULL);
+  if(MemoryTable == NULL) {
+    ASSERT (MemoryTable != NULL);
+    return RETURN_INVALID_PARAMETER;
+  }
 
   // Identify the highest address of the memory table
   MaxAddress = MemoryTable->PhysicalBase + MemoryTable->Length - 1;
@@ -592,12 +599,11 @@ ArmConfigureMmu (
   ArmSetTCR (TCR);
 
   // Allocate pages for translation table
-  TranslationTablePageCount = EFI_SIZE_TO_PAGES((RootTableEntryCount * sizeof(UINT64)) + TT_ALIGNMENT_DESCRIPTION_TABLE);
-  TranslationTable = AllocatePages (TranslationTablePageCount);
+  TranslationTablePageCount = EFI_SIZE_TO_PAGES(RootTableEntryCount * sizeof(UINT64));
+  TranslationTable = (UINT64*)AllocateAlignedPages (TranslationTablePageCount, TT_ALIGNMENT_DESCRIPTION_TABLE);
   if (TranslationTable == NULL) {
     return RETURN_OUT_OF_RESOURCES;
   }
-  TranslationTable = (VOID*)((UINTN)TranslationTable & TT_ADDRESS_MASK_DESCRIPTION_TABLE);
   // We set TTBR0 just after allocating the table to retrieve its location from the subsequent
   // functions without needing to pass this value across the functions. The MMU is only enabled
   // after the translation tables are populated.
@@ -654,6 +660,9 @@ ArmConfigureMmu (
     Status = RETURN_UNSUPPORTED;
     goto FREE_TRANSLATION_TABLE;
   }
+
+  // Set again TCR after getting the Translation Table attributes
+  ArmSetTCR (TCR);
 
   ArmSetMAIR (MAIR_ATTR(TT_ATTR_INDX_DEVICE_MEMORY, MAIR_ATTR_DEVICE_MEMORY) |                      // mapped to EFI_MEMORY_UC
               MAIR_ATTR(TT_ATTR_INDX_MEMORY_NON_CACHEABLE, MAIR_ATTR_NORMAL_MEMORY_NON_CACHEABLE) | // mapped to EFI_MEMORY_WC

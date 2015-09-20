@@ -1,7 +1,7 @@
 /** @file
   Functions declaration related with DHCPv4 for UefiPxeBc Driver.
 
-  Copyright (c) 2009 - 2013, Intel Corporation. All rights reserved.<BR>
+  Copyright (c) 2009 - 2015, Intel Corporation. All rights reserved.<BR>
 
   This program and the accompanying materials
   are licensed and made available under the terms and conditions of the BSD License
@@ -127,7 +127,7 @@ typedef enum {
 
 #define BIT(x)                (1 << x)
 #define CTRL(x)               (0x1F & (x))
-#define DEFAULT_CLASS_ID_DATA "PXEClient:Arch:?????:????:??????"
+#define DEFAULT_CLASS_ID_DATA "PXEClient:Arch:xxxxx:UNDI:003000"
 #define DEFAULT_UNDI_TYPE     1
 #define DEFAULT_UNDI_MAJOR    3
 #define DEFAULT_UNDI_MINOR    0
@@ -372,6 +372,20 @@ PxeBcDhcp4Discover (
   IN  EFI_IP_ADDRESS                  *DestIp,
   IN  UINT16                          IpCount,
   IN  EFI_PXE_BASE_CODE_SRVLIST       *SrvList
+  );
+
+/**
+  Switch the Ip4 policy to static.
+
+  @param[in]  Private             The pointer to PXEBC_PRIVATE_DATA.
+
+  @retval     EFI_SUCCESS         The policy is already configured to static.
+  @retval     Others              Other error as indicated..
+
+**/
+EFI_STATUS
+PxeBcSetIp4Policy (   
+  IN PXEBC_PRIVATE_DATA            *Private
   );
 
 

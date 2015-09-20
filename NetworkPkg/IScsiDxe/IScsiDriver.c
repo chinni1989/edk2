@@ -1,7 +1,7 @@
 /** @file
   The entry point of IScsi driver.
 
-Copyright (c) 2004 - 2014, Intel Corporation. All rights reserved.<BR>
+Copyright (c) 2004 - 2015, Intel Corporation. All rights reserved.<BR>
 This program and the accompanying materials
 are licensed and made available under the terms and conditions of the BSD License
 which accompanies this distribution.  The full text of the license may be found at
@@ -290,7 +290,7 @@ IScsiStart (
   }
 
   Status = gBS->OpenProtocol (
-                  Private->ChildHandle,
+                  Private->ChildHandle, /// Default Tcp child
                   ProtocolGuid,
                   &Interface,
                   Image,
@@ -651,7 +651,9 @@ IScsiStart (
                            &gIScsiConfigGuid,
                            &AttemptConfigOrderSize
                            );
-    ASSERT (AttemptConfigOrder != NULL);
+    if (AttemptConfigOrder == NULL) {
+      goto ON_ERROR;
+    }
     for (Index = 0; Index < AttemptConfigOrderSize / sizeof (UINT8); Index++) {
       if (AttemptConfigOrder[Index] == mPrivate->BootSelectedIndex ||
           AttemptConfigOrder[Index] == BootSelected) {
@@ -689,7 +691,9 @@ IScsiStart (
 
         goto ON_EXIT;
       } else {
-        ASSERT (AttemptConfigOrder[Index] == BootSelected);
+        if (AttemptConfigOrder[Index] != BootSelected) {
+          goto ON_ERROR;
+        }
         mPrivate->BootSelectedIndex = BootSelected;
         //
         // Clear the resource in ExistPrivate.
@@ -743,6 +747,30 @@ IScsiStart (
                   Private->DevicePath
                   );
   if (EFI_ERROR (Status)) {
+    goto ON_ERROR;
+  }
+
+  //
+  // ISCSI children should share the default Tcp child, just open the default Tcp child via BY_CHILD_CONTROLLER.
+  //
+  Status = gBS->OpenProtocol (
+                  Private->ChildHandle, /// Default Tcp child
+                  ProtocolGuid,
+                  &Interface,
+                  Image,
+                  Private->ExtScsiPassThruHandle,
+                  EFI_OPEN_PROTOCOL_BY_CHILD_CONTROLLER
+                  );              
+  if (EFI_ERROR (Status)) {
+    gBS->UninstallMultipleProtocolInterfaces (
+           Private->ExtScsiPassThruHandle,
+           &gEfiExtScsiPassThruProtocolGuid,
+           &Private->IScsiExtScsiPassThru,
+           &gEfiDevicePathProtocolGuid,
+           Private->DevicePath,
+           NULL
+           );
+    
     goto ON_ERROR;
   }
 
@@ -835,6 +863,13 @@ IScsiStop (
     }
 
     gBS->CloseProtocol (
+           Private->ChildHandle,
+           ProtocolGuid,
+           Private->Image,
+           Private->ExtScsiPassThruHandle
+           );
+    
+    gBS->CloseProtocol (
            Conn->TcpIo.Handle,
            ProtocolGuid,
            Private->Image,
@@ -843,6 +878,7 @@ IScsiStop (
 
     return EFI_SUCCESS;
   }
+  
   //
   // Get the handle of the controller we are controling.
   //

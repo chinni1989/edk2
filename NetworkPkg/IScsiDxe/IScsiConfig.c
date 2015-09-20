@@ -1,7 +1,7 @@
 /** @file
   Helper functions for configuring or getting the parameters relating to iSCSI.
 
-Copyright (c) 2004 - 2012, Intel Corporation. All rights reserved.<BR>
+Copyright (c) 2004 - 2015, Intel Corporation. All rights reserved.<BR>
 This program and the accompanying materials
 are licensed and made available under the terms and conditions of the BSD License
 which accompanies this distribution.  The full text of the license may be found at
@@ -541,7 +541,24 @@ IScsiConvertIfrNvDataToAttemptConfigData (
           );
         return EFI_INVALID_PARAMETER;
       }
+
+      //
+      // Validate iSCSI target name configuration again:
+      // The format of iSCSI target name is already verified in IScsiFormCallback() when
+      // user input the name; here we only check the case user does not input the name.
+      //
+      if (Attempt->SessionConfigData.TargetName[0] == '\0') {
+        CreatePopUp (
+          EFI_LIGHTGRAY | EFI_BACKGROUND_BLUE,
+          &Key,
+          L"iSCSI target name is NULL!",
+          NULL
+          );
+        return EFI_INVALID_PARAMETER;
+      }
     }
+
+
     //
     // Validate the authentication info.
     //
@@ -784,7 +801,7 @@ IScsiConvertIfrNvDataToAttemptConfigData (
     Status = gRT->SetVariable (
                     L"AttemptOrder",
                     &gIScsiConfigGuid,
-                    EFI_VARIABLE_BOOTSERVICE_ACCESS | EFI_VARIABLE_RUNTIME_ACCESS | EFI_VARIABLE_NON_VOLATILE,
+                    EFI_VARIABLE_BOOTSERVICE_ACCESS | EFI_VARIABLE_NON_VOLATILE,
                     AttemptConfigOrderSize,
                     AttemptConfigOrder
                     );
@@ -1246,8 +1263,7 @@ IScsiConfigDeleteAttempts (
     }
   }
 
-  Attribute = EFI_VARIABLE_BOOTSERVICE_ACCESS | EFI_VARIABLE_RUNTIME_ACCESS
-              | EFI_VARIABLE_NON_VOLATILE;
+  Attribute = EFI_VARIABLE_BOOTSERVICE_ACCESS | EFI_VARIABLE_NON_VOLATILE;
 
   //
   // Update AttemptOrder in NVR.
@@ -1558,7 +1574,7 @@ IScsiConfigOrderAttempts (
   Status = gRT->SetVariable (
                   L"AttemptOrder",
                   &gIScsiConfigGuid,
-                  EFI_VARIABLE_BOOTSERVICE_ACCESS | EFI_VARIABLE_RUNTIME_ACCESS | EFI_VARIABLE_NON_VOLATILE,
+                  EFI_VARIABLE_BOOTSERVICE_ACCESS | EFI_VARIABLE_NON_VOLATILE,
                   AttemptConfigOrderSize,
                   AttemptConfigOrderTmp
                   );
@@ -2144,6 +2160,25 @@ IScsiFormCallback (
   if (Action == EFI_BROWSER_ACTION_CHANGING) {
     switch (QuestionId) {
     case KEY_ADD_ATTEMPT:
+      //
+      // Check whether iSCSI initiator name is configured already.
+      //
+      mPrivate->InitiatorNameLength = ISCSI_NAME_MAX_SIZE;
+      Status = gIScsiInitiatorName.Get (
+                                     &gIScsiInitiatorName,
+                                     &mPrivate->InitiatorNameLength,
+                                     mPrivate->InitiatorName
+                                     );
+      if (EFI_ERROR (Status)) {
+        CreatePopUp (
+          EFI_LIGHTGRAY | EFI_BACKGROUND_BLUE,
+          &Key,
+          L"Error: please configure iSCSI initiator name first!",
+          NULL
+          );        
+        break;
+      }
+      
       Status = IScsiConfigAddAttempt ();
       break;
 
@@ -2356,9 +2391,9 @@ IScsiFormCallback (
           &Key,
           L"Invalid iSCSI Name!",
           NULL
-          );       
+          );
       } else {
-        AsciiStrCpy (Private->Current->SessionConfigData.TargetName, IScsiName);
+        AsciiStrCpyS (Private->Current->SessionConfigData.TargetName, ISCSI_NAME_MAX_SIZE, IScsiName);
       }
 
       break;

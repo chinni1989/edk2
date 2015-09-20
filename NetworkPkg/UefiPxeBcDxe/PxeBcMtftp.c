@@ -1,7 +1,7 @@
 /** @file
   Functions implementation related with Mtftp for UefiPxeBc Driver.
 
-  Copyright (c) 2007 - 2010, Intel Corporation. All rights reserved.<BR>
+  Copyright (c) 2007 - 2015, Intel Corporation. All rights reserved.<BR>
 
   This program and the accompanying materials
   are licensed and made available under the terms and conditions of the BSD License
@@ -64,11 +64,13 @@ PxeBcMtftp6CheckPacket (
     //
     Private->Mode.TftpErrorReceived   = TRUE;
     Private->Mode.TftpError.ErrorCode = (UINT8) Packet->Error.ErrorCode;
-    AsciiStrnCpy (
+    AsciiStrnCpyS (
       Private->Mode.TftpError.ErrorString,
+      PXE_MTFTP_ERROR_STRING_LENGTH,
       (CHAR8 *) Packet->Error.ErrorMessage,
-      PXE_MTFTP_ERROR_STRING_LENGTH
+      PXE_MTFTP_ERROR_STRING_LENGTH - 1
       );
+    Private->Mode.TftpError.ErrorString[PXE_MTFTP_ERROR_STRING_LENGTH - 1] = '\0';
   }
 
   if (Callback != NULL) {
@@ -150,19 +152,19 @@ PxeBcMtftp6GetFileSize (
   // Build the required options for get info.
   //
   ReqOpt[0].OptionStr = (UINT8 *) mMtftpOptions[PXE_MTFTP_OPTION_TSIZE_INDEX];
-  PxeBcUintnToAscDec (0, OptBuf);
+  PxeBcUintnToAscDec (0, OptBuf, PXE_MTFTP_OPTBUF_MAXNUM_INDEX);
   ReqOpt[0].ValueStr  = OptBuf;
 
   if (BlockSize != NULL) {
     ReqOpt[1].OptionStr = (UINT8 *) mMtftpOptions[PXE_MTFTP_OPTION_BLKSIZE_INDEX];
     ReqOpt[1].ValueStr  = (UINT8 *) (ReqOpt[0].ValueStr + AsciiStrLen ((CHAR8 *) ReqOpt[0].ValueStr) + 1);
-    PxeBcUintnToAscDec (*BlockSize, ReqOpt[1].ValueStr);
+    PxeBcUintnToAscDec (*BlockSize, ReqOpt[1].ValueStr, PXE_MTFTP_OPTBUF_MAXNUM_INDEX - (AsciiStrLen ((CHAR8 *) ReqOpt[0].ValueStr) + 1));
     OptCnt++;
   }
 
   Status = Mtftp6->GetInfo (
                      Mtftp6,
-                     FALSE,
+                     NULL,
                      Filename,
                      NULL,
                      (UINT8) OptCnt,
@@ -177,11 +179,13 @@ PxeBcMtftp6GetFileSize (
       //
       Private->Mode.TftpErrorReceived   = TRUE;
       Private->Mode.TftpError.ErrorCode = (UINT8) Packet->Error.ErrorCode;
-      AsciiStrnCpy (
+      AsciiStrnCpyS (
         Private->Mode.TftpError.ErrorString,
+        PXE_MTFTP_ERROR_STRING_LENGTH,
         (CHAR8 *) Packet->Error.ErrorMessage,
-        PXE_MTFTP_ERROR_STRING_LENGTH
+        PXE_MTFTP_ERROR_STRING_LENGTH - 1
         );
+      Private->Mode.TftpError.ErrorString[PXE_MTFTP_ERROR_STRING_LENGTH - 1] = '\0';
     }
     goto ON_ERROR;
   }
@@ -271,7 +275,7 @@ PxeBcMtftp6ReadFile (
   if (BlockSize != NULL) {
     ReqOpt[0].OptionStr = (UINT8 *) mMtftpOptions[PXE_MTFTP_OPTION_BLKSIZE_INDEX];
     ReqOpt[0].ValueStr  = OptBuf;
-    PxeBcUintnToAscDec (*BlockSize, ReqOpt[0].ValueStr);
+    PxeBcUintnToAscDec (*BlockSize, ReqOpt[0].ValueStr, PXE_MTFTP_OPTBUF_MAXNUM_INDEX);
     OptCnt++;
   }
 
@@ -354,7 +358,7 @@ PxeBcMtftp6WriteFile (
   if (BlockSize != NULL) {
     ReqOpt[0].OptionStr = (UINT8 *) mMtftpOptions[PXE_MTFTP_OPTION_BLKSIZE_INDEX];
     ReqOpt[0].ValueStr  = OptBuf;
-    PxeBcUintnToAscDec (*BlockSize, ReqOpt[0].ValueStr);
+    PxeBcUintnToAscDec (*BlockSize, ReqOpt[0].ValueStr, PXE_MTFTP_OPTBUF_MAXNUM_INDEX);
     OptCnt++;
   }
 
@@ -429,7 +433,7 @@ PxeBcMtftp6ReadDirectory (
   if (BlockSize != NULL) {
     ReqOpt[0].OptionStr = (UINT8 *) mMtftpOptions[PXE_MTFTP_OPTION_BLKSIZE_INDEX];
     ReqOpt[0].ValueStr  = OptBuf;
-    PxeBcUintnToAscDec (*BlockSize, ReqOpt[0].ValueStr);
+    PxeBcUintnToAscDec (*BlockSize, ReqOpt[0].ValueStr, PXE_MTFTP_OPTBUF_MAXNUM_INDEX);
     OptCnt++;
   }
 
@@ -506,11 +510,13 @@ PxeBcMtftp4CheckPacket (
     //
     Private->Mode.TftpErrorReceived   = TRUE;
     Private->Mode.TftpError.ErrorCode = (UINT8) Packet->Error.ErrorCode;
-    AsciiStrnCpy (
+    AsciiStrnCpyS (
       Private->Mode.TftpError.ErrorString,
+      PXE_MTFTP_ERROR_STRING_LENGTH,
       (CHAR8 *) Packet->Error.ErrorMessage,
-      PXE_MTFTP_ERROR_STRING_LENGTH
+      PXE_MTFTP_ERROR_STRING_LENGTH - 1
       );
+    Private->Mode.TftpError.ErrorString[PXE_MTFTP_ERROR_STRING_LENGTH - 1] = '\0';
   }
 
   if (Callback != NULL) {
@@ -592,19 +598,19 @@ PxeBcMtftp4GetFileSize (
   // Build the required options for get info.
   //
   ReqOpt[0].OptionStr = (UINT8 *) mMtftpOptions[PXE_MTFTP_OPTION_TSIZE_INDEX];
-  PxeBcUintnToAscDec (0, OptBuf);
+  PxeBcUintnToAscDec (0, OptBuf, PXE_MTFTP_OPTBUF_MAXNUM_INDEX);
   ReqOpt[0].ValueStr  = OptBuf;
 
   if (BlockSize != NULL) {
     ReqOpt[1].OptionStr = (UINT8 *) mMtftpOptions[PXE_MTFTP_OPTION_BLKSIZE_INDEX];
     ReqOpt[1].ValueStr  = (UINT8 *) (ReqOpt[0].ValueStr + AsciiStrLen ((CHAR8 *) ReqOpt[0].ValueStr) + 1);
-    PxeBcUintnToAscDec (*BlockSize, ReqOpt[1].ValueStr);
+    PxeBcUintnToAscDec (*BlockSize, ReqOpt[1].ValueStr, PXE_MTFTP_OPTBUF_MAXNUM_INDEX - (AsciiStrLen ((CHAR8 *) ReqOpt[0].ValueStr) + 1));
     OptCnt++;
   }
 
   Status = Mtftp4->GetInfo (
                      Mtftp4,
-                     FALSE,
+                     NULL,
                      Filename,
                      NULL,
                      (UINT8) OptCnt,
@@ -619,11 +625,13 @@ PxeBcMtftp4GetFileSize (
       //
       Private->Mode.TftpErrorReceived   = TRUE;
       Private->Mode.TftpError.ErrorCode = (UINT8) Packet->Error.ErrorCode;
-      AsciiStrnCpy (
+      AsciiStrnCpyS (
         Private->Mode.TftpError.ErrorString,
+        PXE_MTFTP_ERROR_STRING_LENGTH,
         (CHAR8 *) Packet->Error.ErrorMessage,
-        PXE_MTFTP_ERROR_STRING_LENGTH
+        PXE_MTFTP_ERROR_STRING_LENGTH - 1
         );
+      Private->Mode.TftpError.ErrorString[PXE_MTFTP_ERROR_STRING_LENGTH - 1] = '\0';
     }
     goto ON_ERROR;
   }
@@ -713,7 +721,7 @@ PxeBcMtftp4ReadFile (
   if (BlockSize != NULL) {
     ReqOpt[0].OptionStr = (UINT8 *) mMtftpOptions[PXE_MTFTP_OPTION_BLKSIZE_INDEX];
     ReqOpt[0].ValueStr  = OptBuf;
-    PxeBcUintnToAscDec (*BlockSize, ReqOpt[0].ValueStr);
+    PxeBcUintnToAscDec (*BlockSize, ReqOpt[0].ValueStr, PXE_MTFTP_OPTBUF_MAXNUM_INDEX);
     OptCnt++;
   }
 
@@ -796,7 +804,7 @@ PxeBcMtftp4WriteFile (
   if (BlockSize != NULL) {
     ReqOpt[0].OptionStr = (UINT8 *) mMtftpOptions[PXE_MTFTP_OPTION_BLKSIZE_INDEX];
     ReqOpt[0].ValueStr  = OptBuf;
-    PxeBcUintnToAscDec (*BlockSize, ReqOpt[0].ValueStr);
+    PxeBcUintnToAscDec (*BlockSize, ReqOpt[0].ValueStr, PXE_MTFTP_OPTBUF_MAXNUM_INDEX);
     OptCnt++;
   }
 
@@ -871,7 +879,7 @@ PxeBcMtftp4ReadDirectory (
   if (BlockSize != NULL) {
     ReqOpt[0].OptionStr = (UINT8 *) mMtftpOptions[PXE_MTFTP_OPTION_BLKSIZE_INDEX];
     ReqOpt[0].ValueStr  = OptBuf;
-    PxeBcUintnToAscDec (*BlockSize, ReqOpt[0].ValueStr);
+    PxeBcUintnToAscDec (*BlockSize, ReqOpt[0].ValueStr, PXE_MTFTP_OPTBUF_MAXNUM_INDEX);
     OptCnt++;
   }
 

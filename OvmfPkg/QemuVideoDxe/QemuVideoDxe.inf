@@ -26,7 +26,7 @@
 #
 # The following information is for reference only and not required by the build tools.
 #
-#  VALID_ARCHITECTURES           = IA32 X64 IPF EBC
+#  VALID_ARCHITECTURES           = IA32 X64 IPF EBC ARM AARCH64
 #
 #  DRIVER_BINDING                =  gQemuVideoDriverBinding
 #  COMPONENT_NAME                =  gQemuVideoComponentName
@@ -39,9 +39,13 @@
   Gop.c
   Initialize.c
 
+[Sources.Ia32, Sources.X64]
+  VbeShim.c
+
 [Packages]
   MdePkg/MdePkg.dec
   OptionRomPkg/OptionRomPkg.dec
+  OvmfPkg/OvmfPkg.dec
 
 [LibraryClasses]
   BaseMemoryLib
@@ -49,6 +53,8 @@
   DebugLib
   DevicePathLib
   MemoryAllocationLib
+  PciLib
+  PrintLib
   TimerLib
   UefiBootServicesTableLib
   UefiDriverEntryPoint

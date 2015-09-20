@@ -1,7 +1,8 @@
 /** @file
   Implementation for EFI_SIMPLE_TEXT_INPUT_PROTOCOL protocol.
 
-Copyright (c) 2006 - 2013, Intel Corporation. All rights reserved.<BR>
+(C) Copyright 2014 Hewlett-Packard Development Company, L.P.<BR>
+Copyright (c) 2006 - 2014, Intel Corporation. All rights reserved.<BR>
 This program and the accompanying materials
 are licensed and made available under the terms and conditions of the BSD License
 which accompanies this distribution.  The full text of the license may be found at
@@ -157,7 +158,7 @@ TerminalConInReadKeyStroke (
                                    pressed.
 
   @retval TRUE                     Key be pressed matches a registered key.
-  @retval FLASE                    Match failed.
+  @retval FALSE                    Match failed.
 
 **/
 BOOLEAN
@@ -453,6 +454,7 @@ TranslateRawDataToEfiKey (
   case PCANSITYPE:
   case VT100TYPE:
   case VT100PLUSTYPE:
+  case TTYTERMTYPE:
     AnsiRawDataToUnicode (TerminalDevice);
     UnicodeToEfiKey (TerminalDevice);
     break;
@@ -647,7 +649,7 @@ GetOneKeyFromSerial (
   @param  Input                The key will be input.
 
   @retval TRUE                 If insert successfully.
-  @retval FLASE                If Raw Data buffer is full before key insertion,
+  @retval FALSE                If Raw Data buffer is full before key insertion,
                                and the key is lost.
 
 **/
@@ -682,7 +684,7 @@ RawFiFoInsertOneKey (
   @param  Output               The key will be removed.
 
   @retval TRUE                 If insert successfully.
-  @retval FLASE                If Raw Data FIFO buffer is empty before remove operation.
+  @retval FALSE                If Raw Data FIFO buffer is empty before remove operation.
 
 **/
 BOOLEAN
@@ -716,7 +718,7 @@ RawFiFoRemoveOneKey (
   @param  TerminalDevice       Terminal driver private structure
 
   @retval TRUE                 If Raw Data FIFO buffer is empty.
-  @retval FLASE                If Raw Data FIFO buffer is not empty.
+  @retval FALSE                If Raw Data FIFO buffer is not empty.
 
 **/
 BOOLEAN
@@ -737,7 +739,7 @@ IsRawFiFoEmpty (
   @param  TerminalDevice       Terminal driver private structure
 
   @retval TRUE                 If Raw Data FIFO buffer is full.
-  @retval FLASE                If Raw Data FIFO buffer is not full.
+  @retval FALSE                If Raw Data FIFO buffer is not full.
 
 **/
 BOOLEAN
@@ -766,7 +768,7 @@ IsRawFiFoFull (
   @param  Key                  The key will be input.
 
   @retval TRUE                 If insert successfully.
-  @retval FLASE                If FIFO buffer is full before key insertion,
+  @retval FALSE                If FIFO buffer is full before key insertion,
                                and the key is lost.
 
 **/
@@ -824,7 +826,7 @@ EfiKeyFiFoInsertOneKey (
   @param  Output               The key will be removed.
 
   @retval TRUE                 If insert successfully.
-  @retval FLASE                If FIFO buffer is empty before remove operation.
+  @retval FALSE                If FIFO buffer is empty before remove operation.
 
 **/
 BOOLEAN
@@ -847,7 +849,7 @@ EfiKeyFiFoRemoveOneKey (
     return FALSE;
   }
 
-  *Output                         = TerminalDevice->EfiKeyFiFo->Data[Head];
+  CopyMem (Output, &TerminalDevice->EfiKeyFiFo->Data[Head], sizeof (EFI_INPUT_KEY));
 
   TerminalDevice->EfiKeyFiFo->Head = (UINT8) ((Head + 1) % (FIFO_MAX_NUMBER + 1));
 
@@ -860,7 +862,7 @@ EfiKeyFiFoRemoveOneKey (
   @param  TerminalDevice       Terminal driver private structure
 
   @retval TRUE                 If FIFO buffer is empty.
-  @retval FLASE                If FIFO buffer is not empty.
+  @retval FALSE                If FIFO buffer is not empty.
 
 **/
 BOOLEAN
@@ -881,7 +883,7 @@ IsEfiKeyFiFoEmpty (
   @param  TerminalDevice       Terminal driver private structure
 
   @retval TRUE                 If FIFO buffer is full.
-  @retval FLASE                If FIFO buffer is not full.
+  @retval FALSE                If FIFO buffer is not full.
 
 **/
 BOOLEAN
@@ -910,7 +912,7 @@ IsEfiKeyFiFoFull (
   @param  Input                The key will be input.
 
   @retval TRUE                 If insert successfully.
-  @retval FLASE                If Unicode FIFO buffer is full before key insertion,
+  @retval FALSE                If Unicode FIFO buffer is full before key insertion,
                                and the key is lost.
 
 **/
@@ -942,15 +944,14 @@ UnicodeFiFoInsertOneKey (
 
 /**
   Remove one pre-fetched key out of the Unicode FIFO buffer.
+  The caller should guarantee that Unicode FIFO buffer is not empty 
+  by IsUnicodeFiFoEmpty ().
 
   @param  TerminalDevice       Terminal driver private structure.
   @param  Output               The key will be removed.
 
-  @retval TRUE                 If insert successfully.
-  @retval FLASE                If Unicode FIFO buffer is empty before remove operation.
-
 **/
-BOOLEAN
+VOID
 UnicodeFiFoRemoveOneKey (
   TERMINAL_DEV  *TerminalDevice,
   UINT16        *Output
@@ -961,19 +962,9 @@ UnicodeFiFoRemoveOneKey (
   Head = TerminalDevice->UnicodeFiFo->Head;
   ASSERT (Head < FIFO_MAX_NUMBER + 1);
 
-  if (IsUnicodeFiFoEmpty (TerminalDevice)) {
-    //
-    //  FIFO is empty
-    //
-    Output = NULL;
-    return FALSE;
-  }
-
   *Output = TerminalDevice->UnicodeFiFo->Data[Head];
 
   TerminalDevice->UnicodeFiFo->Head = (UINT8) ((Head + 1) % (FIFO_MAX_NUMBER + 1));
-
-  return TRUE;
 }
 
 /**
@@ -982,7 +973,7 @@ UnicodeFiFoRemoveOneKey (
   @param  TerminalDevice       Terminal driver private structure
 
   @retval TRUE                 If Unicode FIFO buffer is empty.
-  @retval FLASE                If Unicode FIFO buffer is not empty.
+  @retval FALSE                If Unicode FIFO buffer is not empty.
 
 **/
 BOOLEAN
@@ -1003,7 +994,7 @@ IsUnicodeFiFoEmpty (
   @param  TerminalDevice       Terminal driver private structure
 
   @retval TRUE                 If Unicode FIFO buffer is full.
-  @retval FLASE                If Unicode FIFO buffer is not full.
+  @retval FALSE                If Unicode FIFO buffer is not full.
 
 **/
 BOOLEAN
@@ -1232,7 +1223,8 @@ UnicodeToEfiKey (
         continue;
       }
 
-      if (UnicodeChar == 'O' && TerminalDevice->TerminalType == VT100TYPE) {
+      if (UnicodeChar == 'O' && (TerminalDevice->TerminalType == VT100TYPE ||
+                                 TerminalDevice->TerminalType == TTYTERMTYPE)) {
         TerminalDevice->InputState |= INPUT_STATE_O;
         TerminalDevice->ResetState = RESET_STATE_DEFAULT;
         continue;
@@ -1380,6 +1372,22 @@ UnicodeToEfiKey (
         default :
           break;
         }
+      } else if (TerminalDevice->TerminalType == TTYTERMTYPE) {
+        /* Also accept VT100 escape codes for F1-F4 for TTY term */
+        switch (UnicodeChar) {
+        case 'P':
+          Key.ScanCode = SCAN_F1;
+          break;
+        case 'Q':
+          Key.ScanCode = SCAN_F2;
+          break;
+        case 'R':
+          Key.ScanCode = SCAN_F3;
+          break;
+        case 'S':
+          Key.ScanCode = SCAN_F4;
+          break;
+        }
       }
 
       if (Key.ScanCode != SCAN_NULL) {
@@ -1403,7 +1411,8 @@ UnicodeToEfiKey (
       if (TerminalDevice->TerminalType == PCANSITYPE    ||
           TerminalDevice->TerminalType == VT100TYPE     ||
           TerminalDevice->TerminalType == VT100PLUSTYPE ||
-          TerminalDevice->TerminalType == VTUTF8TYPE) {
+          TerminalDevice->TerminalType == VTUTF8TYPE    ||
+          TerminalDevice->TerminalType == TTYTERMTYPE) {
         switch (UnicodeChar) {
         case 'A':
           Key.ScanCode = SCAN_UP;
@@ -1522,6 +1531,21 @@ UnicodeToEfiKey (
         }
       }
 
+      /*
+       * The VT220 escape codes that the TTY terminal accepts all have
+       * numeric codes, and there are no ambiguous prefixes shared with
+       * other terminal types.
+       */
+      if (TerminalDevice->TerminalType == TTYTERMTYPE &&
+          Key.ScanCode == SCAN_NULL &&
+          UnicodeChar >= '0' &&
+          UnicodeChar <= '9') {
+        TerminalDevice->TtyEscapeStr[0] = UnicodeChar;
+        TerminalDevice->TtyEscapeIndex = 1;
+        TerminalDevice->InputState |= INPUT_STATE_LEFTOPENBRACKET_2;
+        continue;
+      }
+
       if (Key.ScanCode != SCAN_NULL) {
         Key.UnicodeChar = 0;
         EfiKeyFiFoInsertOneKey (TerminalDevice, &Key);
@@ -1534,6 +1558,65 @@ UnicodeToEfiKey (
 
       break;
 
+
+    case INPUT_STATE_ESC | INPUT_STATE_LEFTOPENBRACKET | INPUT_STATE_LEFTOPENBRACKET_2:
+      /*
+       * Here we handle the VT220 escape codes that we accept.  This
+       * state is only used by the TTY terminal type.
+       */
+      Key.ScanCode = SCAN_NULL;
+      if (TerminalDevice->TerminalType == TTYTERMTYPE) {
+
+        if (UnicodeChar == '~' && TerminalDevice->TtyEscapeIndex <= 2) {
+          UINT16 EscCode;
+          TerminalDevice->TtyEscapeStr[TerminalDevice->TtyEscapeIndex] = 0; /* Terminate string */
+          EscCode = (UINT16) StrDecimalToUintn(TerminalDevice->TtyEscapeStr);
+          switch (EscCode) {
+          case 3:
+              Key.ScanCode = SCAN_DELETE;
+              break;
+          case 11:
+          case 12:
+          case 13:
+          case 14:
+          case 15:
+            Key.ScanCode = SCAN_F1 + EscCode - 11;
+            break;
+          case 17:
+          case 18:
+          case 19:
+          case 20:
+          case 21:
+            Key.ScanCode = SCAN_F6 + EscCode - 17;
+            break;
+          case 23:
+          case 24:
+            Key.ScanCode = SCAN_F11 + EscCode - 23;
+            break;
+          default:
+            break;
+          }
+        } else if (TerminalDevice->TtyEscapeIndex == 1){
+          /* 2 character escape code   */
+          TerminalDevice->TtyEscapeStr[TerminalDevice->TtyEscapeIndex++] = UnicodeChar;
+          continue;
+        }
+        else {
+          DEBUG ((EFI_D_ERROR, "Unexpected state in escape2\n"));
+        }
+      }
+      TerminalDevice->ResetState = RESET_STATE_DEFAULT;
+
+      if (Key.ScanCode != SCAN_NULL) {
+        Key.UnicodeChar = 0;
+        EfiKeyFiFoInsertOneKey (TerminalDevice, &Key);
+        TerminalDevice->InputState = INPUT_STATE_DEFAULT;
+        UnicodeToEfiKeyFlushState (TerminalDevice);
+        continue;
+      }
+
+      UnicodeToEfiKeyFlushState (TerminalDevice);
+      break;
 
     default:
       //
@@ -1569,8 +1652,14 @@ UnicodeToEfiKey (
     }
 
     if (UnicodeChar == DEL) {
-      Key.ScanCode    = SCAN_DELETE;
-      Key.UnicodeChar = 0;
+      if (TerminalDevice->TerminalType == TTYTERMTYPE) {
+        Key.ScanCode    = SCAN_NULL;
+        Key.UnicodeChar = CHAR_BACKSPACE;
+      }
+      else {
+        Key.ScanCode    = SCAN_DELETE;
+        Key.UnicodeChar = 0;
+      }
     } else {
       Key.ScanCode    = SCAN_NULL;
       Key.UnicodeChar = UnicodeChar;

@@ -1,7 +1,7 @@
 /** @file
   Root include file to support building OpenSSL Crypto Library.
 
-Copyright (c) 2010 - 2011, Intel Corporation. All rights reserved.<BR>
+Copyright (c) 2010 - 2015, Intel Corporation. All rights reserved.<BR>
 This program and the accompanying materials
 are licensed and made available under the terms and conditions of the BSD License
 which accompanies this distribution.  The full text of the license may be found at
@@ -20,6 +20,8 @@ WITHOUT WARRANTIES OR REPRESENTATIONS OF ANY KIND, EITHER EXPRESS OR IMPLIED.
 #include <Library/BaseMemoryLib.h>
 #include <Library/MemoryAllocationLib.h>
 #include <Library/DebugLib.h>
+
+#define MAX_STRING_SIZE  0x1000
 
 //
 // File operations are not required for building Open SSL, 
@@ -72,7 +74,7 @@ typedef VOID  *FILE;
    portably, hence it is provided by a Standard C header file.
    For pre-Standard C compilers, here is a version that usually works
    (but watch out!): */
-#define offsetof(type, member) ( (int) & ((type*)0) -> member )
+#define offsetof(type, member) OFFSET_OF (type, member)
 
 //
 // Basic types from EFI Application Toolkit required to buiild Open SSL
@@ -108,6 +110,11 @@ struct tm {
   long  tm_gmtoff;  /* offset from CUT in seconds */
   char  *tm_zone;   /* timezone abbreviation */
 };
+
+struct timeval {
+  long tv_sec;      /* time value, in seconds */
+  long tv_usec;     /* time value, in microseconds */
+} timeval;
 
 struct dirent {
   UINT32  d_fileno;         /* file number of entry */
@@ -231,14 +238,15 @@ extern FILE  *stdout;
 #define memmove(dest,source,count)        CopyMem(dest,source,(UINTN)(count))
 #define strcmp                            AsciiStrCmp
 #define strncmp(string1,string2,count)    (int)(AsciiStrnCmp(string1,string2,(UINTN)(count)))
-#define strcpy(strDest,strSource)         AsciiStrCpy(strDest,strSource)
-#define strncpy(strDest,strSource,count)  AsciiStrnCpy(strDest,strSource,(UINTN)count)
-#define strlen(str)                       (size_t)(AsciiStrLen(str))
-#define strcat(strDest,strSource)         AsciiStrCat(strDest,strSource)
+#define strcpy(strDest,strSource)         AsciiStrCpyS(strDest,MAX_STRING_SIZE,strSource)
+#define strncpy(strDest,strSource,count)  AsciiStrnCpyS(strDest,MAX_STRING_SIZE,strSource,(UINTN)count)
+#define strlen(str)                       (size_t)(AsciiStrnLenS(str,MAX_STRING_SIZE))
+#define strcat(strDest,strSource)         AsciiStrCatS(strDest,MAX_STRING_SIZE,strSource)
 #define strchr(str,ch)                    ScanMem8((VOID *)(str),AsciiStrSize(str),(UINT8)ch)
 #define abort()                           ASSERT (FALSE)
 #define assert(expression)
 #define localtime(timer)                  NULL
 #define gmtime_r(timer,result)            (result = NULL)
+#define atoi(nptr)                        AsciiStrDecimalToUintn(nptr)
 
 #endif

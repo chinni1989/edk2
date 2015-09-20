@@ -44,6 +44,11 @@
 
 [Sources.ARM]
   strtof.c
+  Ipf/strtold.c
+
+[Sources.AARCH64]
+  strtof.c
+  Ipf/strtold.c
 
 [Sources]
   strtod.c      # Public interfaces

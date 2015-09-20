@@ -13,7 +13,7 @@
   4. It save all the mapping info in NV variables which will be consumed
      by platform override protocol driver to publish the platform override protocol.
 
-Copyright (c) 2007 - 2013, Intel Corporation. All rights reserved.<BR>
+Copyright (c) 2007 - 2015, Intel Corporation. All rights reserved.<BR>
 This program and the accompanying materials
 are licensed and made available under the terms and conditions of the BSD License
 which accompanies this distribution.  The full text of the license may be found at
@@ -70,16 +70,16 @@ EFI_HANDLE                   *mDevicePathHandleBuffer;
 EFI_HANDLE                   *mDriverImageHandleBuffer;
 
 INTN                         mSelectedCtrIndex;
-EFI_STRING_ID                mControllerToken[MAX_CHOICE_NUM];
+EFI_STRING_ID                *mControllerToken;
 UINTN                        mDriverImageHandleCount;
-EFI_STRING_ID                mDriverImageToken[MAX_CHOICE_NUM];
-EFI_STRING_ID                mDriverImageFilePathToken[MAX_CHOICE_NUM];
-EFI_LOADED_IMAGE_PROTOCOL    *mDriverImageProtocol[MAX_CHOICE_NUM];
-EFI_DEVICE_PATH_PROTOCOL     *mControllerDevicePathProtocol[MAX_CHOICE_NUM];
+EFI_STRING_ID                *mDriverImageToken;
+EFI_DEVICE_PATH_PROTOCOL     **mControllerDevicePathProtocol;
 UINTN                        mSelectedDriverImageNum;
 UINTN                        mLastSavedDriverImageNum;
 UINT16                       mCurrentPage;
 EFI_CALLBACK_INFO           *mCallbackInfo;
+BOOLEAN                     *mDriSelection;
+UINTN                        mMaxDeviceCount;
 
 HII_VENDOR_DEVICE_PATH  mHiiVendorDevicePath = {
   {
@@ -123,10 +123,11 @@ DevicePathToStr (
            TRUE
            );
   if (Text == NULL) {
-    return AllocateCopyPool (sizeof (L"?"), L"?");
-  } else {
-    return Text;
+    Text = AllocateCopyPool (sizeof (L"?"), L"?");
+    ASSERT (Text != NULL);
   }
+
+  return Text;
 }
 
 /**
@@ -332,6 +333,7 @@ UpdateDeviceSelectPage (
   EFI_STATUS                                Status;
   UINTN                                     Index;
   UINTN                                     DevicePathHandleCount;
+  UINTN                                     NewStrSize;
   CHAR16                                    *NewString;
   EFI_STRING_ID                             NewStringToken;
   CHAR16                                    *ControllerName;
@@ -424,6 +426,12 @@ UpdateDeviceSelectPage (
     return EFI_SUCCESS;
   }
 
+  mMaxDeviceCount = DevicePathHandleCount;
+  mControllerDevicePathProtocol = AllocateZeroPool (DevicePathHandleCount * sizeof (EFI_DEVICE_PATH_PROTOCOL *));
+  ASSERT (mControllerDevicePathProtocol != NULL);
+  mControllerToken = AllocateZeroPool (DevicePathHandleCount * sizeof (EFI_STRING_ID));
+  ASSERT (mControllerToken != NULL);
+
   for (Index = 0; Index < DevicePathHandleCount; Index++) {
     if (FakeNvData->PciDeviceFilter == 0x01) {
       //
@@ -482,14 +490,15 @@ UpdateDeviceSelectPage (
     // Export the driver name string and create item in set options page
     //
     Len = StrSize (ControllerName);
-    NewString = AllocateZeroPool (Len + StrSize (L"--"));
+    NewStrSize = Len + StrSize (L"--");
+    NewString = AllocateZeroPool (NewStrSize);
     ASSERT (NewString != NULL);
     if (EFI_ERROR (CheckMapping (ControllerDevicePath,NULL, &mMappingDataBase, NULL, NULL))) {
-      StrCat (NewString, L"--");
+      StrCatS (NewString, NewStrSize/sizeof(CHAR16), L"--");
     } else {
-      StrCat (NewString, L"**");
+      StrCatS (NewString, NewStrSize/sizeof(CHAR16), L"**");
     }
-    StrCat (NewString, ControllerName);
+    StrCatS (NewString, NewStrSize/sizeof(CHAR16), ControllerName);
 
     NewStringToken = HiiSetString (Private->RegisteredHandle, mControllerToken[Index], NewString, NULL);
     ASSERT (NewStringToken != 0);
@@ -615,6 +624,7 @@ UpdateBindingDriverSelectPage (
 {
   EFI_STATUS                                Status;
   UINTN                                     Index;
+  UINTN                                     NewStrSize;
   CHAR16                                    *NewString;
   EFI_STRING_ID                             NewStringToken;
   EFI_STRING_ID                             NewStringHelpToken;
@@ -629,6 +639,9 @@ UpdateBindingDriverSelectPage (
   VOID                                      *EndOpCodeHandle;
   EFI_IFR_GUID_LABEL                        *StartLabel;
   EFI_IFR_GUID_LABEL                        *EndLabel;
+  EFI_LOADED_IMAGE_PROTOCOL                 **DriverImageProtocol;
+  EFI_STRING_ID                             *DriverImageFilePathToken;
+  UINT8                                     CheckFlags;
 
   //
   // If user select a controller item in the first page  the following code will be run.
@@ -697,6 +710,16 @@ UpdateBindingDriverSelectPage (
     return EFI_NOT_FOUND;
   }
 
+  mDriverImageToken = AllocateZeroPool (DriverImageHandleCount * sizeof (EFI_STRING_ID));
+  ASSERT (mDriverImageToken != NULL);
+  mDriSelection = AllocateZeroPool (DriverImageHandleCount * sizeof (BOOLEAN));
+  ASSERT (mDriSelection != NULL);
+
+  DriverImageProtocol = AllocateZeroPool (DriverImageHandleCount * sizeof (EFI_LOADED_IMAGE_PROTOCOL *));
+  ASSERT (DriverImageProtocol != NULL);
+  DriverImageFilePathToken = AllocateZeroPool (DriverImageHandleCount * sizeof (EFI_STRING_ID));
+  ASSERT (DriverImageFilePathToken != NULL);
+
   mDriverImageHandleCount = DriverImageHandleCount;
   for (Index = 0; Index < DriverImageHandleCount; Index++) {
     //
@@ -717,16 +740,16 @@ UpdateBindingDriverSelectPage (
                     EFI_OPEN_PROTOCOL_GET_PROTOCOL
                     );
     if (EFI_ERROR (Status)) {
-      FakeNvData->DriSelection[Index] = 0x00;
+      mDriSelection[Index] = FALSE;
       continue;
     }
-    mDriverImageProtocol[Index] = LoadedImage;
+    DriverImageProtocol[Index] = LoadedImage;
     //
     // Find its related driver binding protocol
     //
     DriverBindingHandle = GetDriverBindingHandleFromImageHandle (mDriverImageHandleBuffer[Index]);
     if (DriverBindingHandle == NULL) {
-      FakeNvData->DriSelection[Index] = 0x00;
+      mDriSelection[Index] = FALSE;
       continue;
     }
 
@@ -740,7 +763,7 @@ UpdateBindingDriverSelectPage (
                         (VOID **) &LoadedImageDevicePath
                         );
     if (LoadedImageDevicePath == NULL) {
-      FakeNvData->DriSelection[Index] = 0x00;
+      mDriSelection[Index] = FALSE;
       continue;
     }
 
@@ -756,11 +779,11 @@ UpdateBindingDriverSelectPage (
                          (VOID **) &BusSpecificDriverOverride
                          );
         if (EFI_ERROR (Status) || BusSpecificDriverOverride == NULL) {
-          FakeNvData->DriSelection[Index] = 0x00;
+          mDriSelection[Index] = FALSE;
           continue;
         }
       } else {
-        FakeNvData->DriSelection[Index] = 0x00;
+        mDriSelection[Index] = FALSE;
         continue;
       }
     }
@@ -794,15 +817,16 @@ UpdateBindingDriverSelectPage (
     //
     // First create the driver image name
     //
-    NewString = AllocateZeroPool (StrSize (DriverName));
+    NewStrSize = StrSize (DriverName);
+    NewString = AllocateZeroPool (NewStrSize);
     ASSERT (NewString != NULL); 
     if (EFI_ERROR (CheckMapping (mControllerDevicePathProtocol[mSelectedCtrIndex], LoadedImageDevicePath, &mMappingDataBase, NULL, NULL))) {
-      FakeNvData->DriSelection[Index] = 0x00;
+      mDriSelection[Index] = FALSE;
     } else {
-      FakeNvData->DriSelection[Index] = 0x01;
+      mDriSelection[Index] = TRUE;
       mLastSavedDriverImageNum++;
     }
-    StrCat (NewString, DriverName);
+    StrCatS (NewString, NewStrSize/sizeof(CHAR16), DriverName);
     NewStringToken = HiiSetString (Private->RegisteredHandle, mDriverImageToken[Index], NewString, NULL);
     ASSERT (NewStringToken != 0);
     mDriverImageToken[Index] = NewStringToken;
@@ -816,24 +840,30 @@ UpdateBindingDriverSelectPage (
     //
     DriverName = DevicePathToStr (LoadedImageDevicePath);
 
-    NewString = AllocateZeroPool (StrSize (DriverName));
+    NewStrSize = StrSize (DriverName);
+    NewString = AllocateZeroPool (NewStrSize);
     ASSERT (NewString != NULL); 
-    StrCat (NewString, DriverName);
-    NewStringHelpToken = HiiSetString (Private->RegisteredHandle, mDriverImageFilePathToken[Index], NewString, NULL);
+    StrCatS (NewString, NewStrSize/sizeof(CHAR16), DriverName);
+    NewStringHelpToken = HiiSetString (Private->RegisteredHandle, DriverImageFilePathToken[Index], NewString, NULL);
     ASSERT (NewStringHelpToken != 0);
-    mDriverImageFilePathToken[Index] = NewStringHelpToken;
+    DriverImageFilePathToken[Index] = NewStringHelpToken;
     FreePool (NewString);
     FreePool (DriverName);
 
+    CheckFlags        = 0;
+    if (mDriSelection[Index]) {
+      CheckFlags |= EFI_IFR_CHECKBOX_DEFAULT;
+    }
+
     HiiCreateCheckBoxOpCode (
       StartOpCodeHandle,
-      (UINT16) (DRIVER_SELECTION_QUESTION_ID + Index),
-      VARSTORE_ID_PLAT_OVER_MNGR,
-      (UINT16) (DRIVER_SELECTION_VAR_OFFSET + Index),
+      (UINT16) (KEY_VALUE_DRIVER_OFFSET + Index),
+      0,
+      0,
       NewStringToken,
       NewStringHelpToken,
-      0,
-      0,
+      EFI_IFR_FLAG_CALLBACK,
+      CheckFlags,
       NULL
       );
   }
@@ -851,6 +881,15 @@ UpdateBindingDriverSelectPage (
 
   HiiFreeOpCodeHandle (StartOpCodeHandle);
   HiiFreeOpCodeHandle (EndOpCodeHandle);
+
+  if (DriverImageProtocol != NULL) {
+    FreePool (DriverImageProtocol);
+  }
+
+  if (DriverImageFilePathToken != NULL) {
+    FreePool (DriverImageFilePathToken);
+  }
+
   return EFI_SUCCESS;
 }
 
@@ -931,7 +970,7 @@ UpdatePrioritySelectPage (
   //
   SelectedDriverImageNum = 0;
   for (Index = 0; Index < mDriverImageHandleCount; Index++) {
-    if (FakeNvData->DriSelection[Index] != 0) {
+    if (mDriSelection[Index]) {
       SelectedDriverImageNum ++;
     }
   }
@@ -949,7 +988,7 @@ UpdatePrioritySelectPage (
   //
   SelectedDriverImageNum = 0;
   for (Index = 0; Index < mDriverImageHandleCount; Index++) {
-    if (FakeNvData->DriSelection[Index] != 0) {
+    if (mDriSelection[Index]) {
       //
       // Use the NO. in driver binding buffer as value, will use it later
       //
@@ -1067,7 +1106,7 @@ UpdatePrioritySelectPage (
 
 **/
 EFI_STATUS
-CommintChanges (
+CommitChanges (
   IN EFI_CALLBACK_INFO                *Private,
   IN UINT16                           KeyValue,
   IN PLAT_OVER_MNGR_DATA              *FakeNvData
@@ -1240,6 +1279,7 @@ PlatOverMngrRouteConfig (
   EFI_CALLBACK_INFO                         *Private;
   UINT16                                    KeyValue;
   PLAT_OVER_MNGR_DATA                       *FakeNvData;
+  EFI_STATUS                                Status;
 
   if (Configuration == NULL || Progress == NULL) {
     return EFI_INVALID_PARAMETER;
@@ -1260,24 +1300,14 @@ PlatOverMngrRouteConfig (
     return EFI_SUCCESS;
   }
 
-  if (mCurrentPage == FORM_ID_DRIVER) {
-    KeyValue = KEY_VALUE_DRIVER_GOTO_ORDER;
-    UpdatePrioritySelectPage (Private, KeyValue, FakeNvData);
-    KeyValue = KEY_VALUE_ORDER_SAVE_AND_EXIT;
-    CommintChanges (Private, KeyValue, FakeNvData);
-    //
-    // Since UpdatePrioritySelectPage will change mCurrentPage,
-    // should ensure the mCurrentPage still indicate the second page here
-    //
-    mCurrentPage = FORM_ID_DRIVER;
-  }
+  Status = EFI_SUCCESS;
 
   if (mCurrentPage == FORM_ID_ORDER) {
     KeyValue = KEY_VALUE_ORDER_SAVE_AND_EXIT;
-    CommintChanges (Private, KeyValue, FakeNvData);
+    Status = CommitChanges (Private, KeyValue, FakeNvData);
   }
 
-  return EFI_SUCCESS;
+  return Status;
 }
 
 /**
@@ -1347,7 +1377,7 @@ PlatOverMngrCallback (
       }
     }
 
-    if (((KeyValue >= KEY_VALUE_DEVICE_OFFSET) && (KeyValue < KEY_VALUE_DEVICE_MAX)) || (KeyValue == KEY_VALUE_ORDER_GOTO_PREVIOUS)) {
+    if (((KeyValue >= KEY_VALUE_DEVICE_OFFSET) && (KeyValue < KEY_VALUE_DEVICE_OFFSET + mMaxDeviceCount)) || (KeyValue == KEY_VALUE_ORDER_GOTO_PREVIOUS)) {
       if (KeyValue == KEY_VALUE_ORDER_GOTO_PREVIOUS) {
         KeyValue = (EFI_QUESTION_ID) (mSelectedCtrIndex + KEY_VALUE_DEVICE_OFFSET);
       }
@@ -1381,30 +1411,34 @@ PlatOverMngrCallback (
       UpdateDeviceSelectPage (Private, KeyValue, FakeNvData);
     }
   } else if (Action == EFI_BROWSER_ACTION_CHANGED) {
-    switch (KeyValue) {
-    case KEY_VALUE_DEVICE_REFRESH:
-    case KEY_VALUE_DEVICE_FILTER:
-      UpdateDeviceSelectPage (Private, KeyValue, FakeNvData);
-      //
-      // Update page title string
-      //
-      NewStringToken = STRING_TOKEN (STR_TITLE);
-      if (HiiSetString (Private->RegisteredHandle, NewStringToken, L"First, Select the controller by device path", NULL) == 0) {
-        ASSERT (FALSE);
-      }
-    break;
-    
-    case KEY_VALUE_ORDER_SAVE_AND_EXIT:
-      Status = CommintChanges (Private, KeyValue, FakeNvData);
-      *ActionRequest = EFI_BROWSER_ACTION_REQUEST_SUBMIT;
-      if (EFI_ERROR (Status)) {
-        CreatePopUp (EFI_LIGHTGRAY | EFI_BACKGROUND_BLUE, &Key, L"Single Override Info too large, Saving Error!", NULL);
-        return EFI_DEVICE_ERROR;
-      }
-    break;
+    if ((KeyValue >= KEY_VALUE_DRIVER_OFFSET) && (KeyValue < KEY_VALUE_DRIVER_OFFSET + mDriverImageHandleCount)) {
+      mDriSelection[KeyValue - KEY_VALUE_DRIVER_OFFSET] = Value->b;
+    } else {
+      switch (KeyValue) {
+      case KEY_VALUE_DEVICE_REFRESH:
+      case KEY_VALUE_DEVICE_FILTER:
+        UpdateDeviceSelectPage (Private, KeyValue, FakeNvData);
+        //
+        // Update page title string
+        //
+        NewStringToken = STRING_TOKEN (STR_TITLE);
+        if (HiiSetString (Private->RegisteredHandle, NewStringToken, L"First, Select the controller by device path", NULL) == 0) {
+          ASSERT (FALSE);
+        }
+      break;
+      
+      case KEY_VALUE_ORDER_SAVE_AND_EXIT:
+        Status = CommitChanges (Private, KeyValue, FakeNvData);
+        *ActionRequest = EFI_BROWSER_ACTION_REQUEST_SUBMIT;
+        if (EFI_ERROR (Status)) {
+          CreatePopUp (EFI_LIGHTGRAY | EFI_BACKGROUND_BLUE, &Key, L"Single Override Info too large, Saving Error!", NULL);
+          return EFI_DEVICE_ERROR;
+        }
+      break;
 
-    default:
-    break;
+      default:
+      break;
+      }
     }
   }
 
@@ -1606,6 +1640,19 @@ PlatDriOverrideDxeInit (
   mCallbackInfo->PlatformDriverOverride.GetDriver      = GetDriver;
   mCallbackInfo->PlatformDriverOverride.GetDriverPath  = GetDriverPath;
   mCallbackInfo->PlatformDriverOverride.DriverLoaded   = DriverLoaded;
+
+  //
+  // Locate ConfigRouting protocol
+  //
+  Status = gBS->LocateProtocol (
+                  &gEfiHiiConfigRoutingProtocolGuid,
+                  NULL,
+                  (VOID **) &mCallbackInfo->HiiConfigRouting
+                  );
+  if (EFI_ERROR (Status)) {
+    goto Finish;
+  }
+
   //
   // Install Device Path Protocol and Config Access protocol to driver handle
   // Install Platform Driver Override Protocol to driver handle
@@ -1640,26 +1687,10 @@ PlatDriOverrideDxeInit (
   }
 
   //
-  // Locate ConfigRouting protocol
-  //
-  Status = gBS->LocateProtocol (
-                  &gEfiHiiConfigRoutingProtocolGuid,
-                  NULL,
-                  (VOID **) &mCallbackInfo->HiiConfigRouting
-                  );
-  if (EFI_ERROR (Status)) {
-    goto Finish;
-  }
-
-  //
   // Clear all the globle variable
   //
   mDriverImageHandleCount = 0;
   mCurrentPage = 0;
-  ZeroMem (mDriverImageToken, MAX_CHOICE_NUM * sizeof (EFI_STRING_ID));
-  ZeroMem (mDriverImageFilePathToken, MAX_CHOICE_NUM * sizeof (EFI_STRING_ID));
-  ZeroMem (mControllerToken, MAX_CHOICE_NUM * sizeof (EFI_STRING_ID));
-  ZeroMem (mDriverImageProtocol, MAX_CHOICE_NUM * sizeof (EFI_LOADED_IMAGE_PROTOCOL *));
   
   return EFI_SUCCESS;
 
@@ -1702,6 +1733,18 @@ PlatDriOverrideDxeUnload (
   }
 
   FreePool (mCallbackInfo);
+
+  if (mControllerToken != NULL) {
+    FreePool (mControllerToken);
+  }
+
+  if (mControllerDevicePathProtocol != NULL) {
+    FreePool (mControllerDevicePathProtocol);
+  }
+
+  if (mDriverImageToken != NULL) {
+    FreePool (mDriverImageToken);
+  }
 
   return EFI_SUCCESS;
 }

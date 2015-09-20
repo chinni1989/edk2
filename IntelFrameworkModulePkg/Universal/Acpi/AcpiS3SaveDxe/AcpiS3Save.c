@@ -2,7 +2,7 @@
   This is an implementation of the ACPI S3 Save protocol.  This is defined in
   S3 boot path specification 0.9.
 
-Copyright (c) 2006 - 2013, Intel Corporation. All rights reserved.<BR>
+Copyright (c) 2006 - 2015, Intel Corporation. All rights reserved.<BR>
 
 This program and the accompanying materials
 are licensed and made available under the terms and conditions
@@ -31,6 +31,11 @@ WITHOUT WARRANTIES OR REPRESENTATIONS OF ANY KIND, EITHER EXPRESS OR IMPLIED.
 #include <IndustryStandard/Acpi.h>
 
 #include "AcpiS3Save.h"
+
+//
+// 8 extra pages for PF handler.
+//
+#define EXTRA_PAGE_TABLE_PAGES   8
 
 /**
   Hook point for AcpiVariableThunkPlatform for InstallAcpiS3Save.
@@ -303,21 +308,61 @@ FindAcpiFacsTable (
 }
 
 /**
-  Allocates and fills in the Page Directory and Page Table Entries to
-  establish a 1:1 Virtual to Physical mapping.
+  The function will check if long mode waking vector is supported.
+
+  @param[in] Facs   Pointer to FACS table.
+
+  @retval TRUE   Long mode waking vector is supported.
+  @retval FALSE  Long mode waking vector is not supported.
+
+**/
+BOOLEAN
+IsLongModeWakingVectorSupport (
+  IN EFI_ACPI_4_0_FIRMWARE_ACPI_CONTROL_STRUCTURE *Facs
+  )
+{
+  if ((Facs == NULL) ||
+      (Facs->Signature != EFI_ACPI_4_0_FIRMWARE_ACPI_CONTROL_STRUCTURE_SIGNATURE) ) {
+    //
+    // Something wrong with FACS.
+    //
+    return FALSE;
+  }
+  if (Facs->XFirmwareWakingVector != 0) {
+    if ((Facs->Version == EFI_ACPI_4_0_FIRMWARE_ACPI_CONTROL_STRUCTURE_VERSION) &&
+        ((Facs->Flags & EFI_ACPI_4_0_64BIT_WAKE_SUPPORTED_F) != 0)) {
+      //
+      // BIOS supports 64bit waking vector.
+      //
+      if (FeaturePcdGet (PcdDxeIplSwitchToLongMode)) {
+        return TRUE;
+      }
+    }
+  }
+  return FALSE;
+}
+
+/**
+  Allocates page table buffer.
+
+  @param[in] LongModeWakingVectorSupport    Support long mode waking vector or not.
+
   If BootScriptExector driver will run in 64-bit mode, this function will establish the 1:1 
-  virtual to physical mapping page table.
+  virtual to physical mapping page table when long mode waking vector is supported, otherwise
+  create 4G page table when long mode waking vector is not supported and let PF handler to
+  handle > 4G request.
   If BootScriptExector driver will not run in 64-bit mode, this function will do nothing. 
   
-  @return  the 1:1 Virtual to Physical identity mapping page table base address. 
+  @return Page table base address. 
 
 **/
 EFI_PHYSICAL_ADDRESS
-S3CreateIdentityMappingPageTables (
-  VOID
+S3AllocatePageTablesBuffer (
+  IN BOOLEAN    LongModeWakingVectorSupport
   )
 {  
   if (FeaturePcdGet (PcdDxeIplSwitchToLongMode)) {
+    UINTN                                         ExtraPageTablePages;
     UINT32                                        RegEax;
     UINT32                                        RegEdx;
     UINT8                                         PhysicalAddressBits;
@@ -354,13 +399,23 @@ S3CreateIdentityMappingPageTables (
         PhysicalAddressBits = 36;
       }
     }
-    
+
     //
     // IA-32e paging translates 48-bit linear addresses to 52-bit physical addresses.
     //
     ASSERT (PhysicalAddressBits <= 52);
     if (PhysicalAddressBits > 48) {
       PhysicalAddressBits = 48;
+    }
+
+    ExtraPageTablePages = 0;
+    if (!LongModeWakingVectorSupport) {
+      //
+      // Create 4G page table when BIOS does not support long mode waking vector,
+      // and let PF handler to handle > 4G request.
+      //
+      PhysicalAddressBits = 32;
+      ExtraPageTablePages = EXTRA_PAGE_TABLE_PAGES;
     }
 
     //
@@ -382,7 +437,9 @@ S3CreateIdentityMappingPageTables (
     } else {
       TotalPageTableSize = (UINTN)(1 + NumberOfPml4EntriesNeeded);
     }
-    DEBUG ((EFI_D_ERROR, "TotalPageTableSize - %x pages\n", TotalPageTableSize));
+
+    TotalPageTableSize += ExtraPageTablePages;
+    DEBUG ((EFI_D_ERROR, "AcpiS3Save TotalPageTableSize - 0x%x pages\n", TotalPageTableSize));
 
     //
     // By architecture only one PageMapLevel4 exists - so lets allocate storage for it.
@@ -451,6 +508,7 @@ S3Ready (
   STATIC BOOLEAN                                AlreadyEntered;
   IA32_DESCRIPTOR                               *Idtr;
   IA32_IDT_GATE_DESCRIPTOR                      *IdtGate;
+  EFI_ACPI_4_0_FIRMWARE_ACPI_CONTROL_STRUCTURE  *Facs;
 
   DEBUG ((EFI_D_INFO, "S3Ready!\n"));
 
@@ -470,7 +528,8 @@ S3Ready (
   //
   // Get ACPI Table because we will save its position to variable
   //
-  AcpiS3Context->AcpiFacsTable = (EFI_PHYSICAL_ADDRESS)(UINTN)FindAcpiFacsTable ();
+  Facs = (EFI_ACPI_4_0_FIRMWARE_ACPI_CONTROL_STRUCTURE *) FindAcpiFacsTable ();
+  AcpiS3Context->AcpiFacsTable = (EFI_PHYSICAL_ADDRESS) (UINTN) Facs;
   ASSERT (AcpiS3Context->AcpiFacsTable != 0);
 
   IdtGate = AllocateMemoryBelow4G (EfiReservedMemoryType, sizeof(IA32_IDT_GATE_DESCRIPTOR) * 0x100 + sizeof(IA32_DESCRIPTOR));
@@ -492,7 +551,7 @@ S3Ready (
   //
   // Allocate page table
   //
-  AcpiS3Context->S3NvsPageTableAddress = S3CreateIdentityMappingPageTables ();
+  AcpiS3Context->S3NvsPageTableAddress = S3AllocatePageTablesBuffer (IsLongModeWakingVectorSupport (Facs));
 
   //
   // Allocate stack
@@ -511,6 +570,8 @@ S3Ready (
   DEBUG((EFI_D_INFO, "AcpiS3Context: IdtrProfile is 0x%8x\n", AcpiS3Context->IdtrProfile));
   DEBUG((EFI_D_INFO, "AcpiS3Context: S3NvsPageTableAddress is 0x%8x\n", AcpiS3Context->S3NvsPageTableAddress));
   DEBUG((EFI_D_INFO, "AcpiS3Context: S3DebugBufferAddress is 0x%8x\n", AcpiS3Context->S3DebugBufferAddress));
+  DEBUG((EFI_D_INFO, "AcpiS3Context: BootScriptStackBase is 0x%8x\n", AcpiS3Context->BootScriptStackBase));
+  DEBUG((EFI_D_INFO, "AcpiS3Context: BootScriptStackSize is 0x%8x\n", AcpiS3Context->BootScriptStackSize));
 
   Status = SaveLockBox (
              &gEfiAcpiVariableGuid,

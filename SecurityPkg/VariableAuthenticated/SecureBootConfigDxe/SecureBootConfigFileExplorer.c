@@ -1,7 +1,7 @@
 /** @file
   Internal file explorer functions for SecureBoot configuration module.
 
-Copyright (c) 2012 - 2014, Intel Corporation. All rights reserved.<BR>
+Copyright (c) 2012 - 2015, Intel Corporation. All rights reserved.<BR>
 This program and the accompanying materials
 are licensed and made available under the terms and conditions of the BSD License
 which accompanies this distribution.  The full text of the license may be found at
@@ -65,7 +65,7 @@ StrDuplicate (
 }
 
 /**
-  Helper function called as part of the code needed to allocate 
+  Helper function called as part of the code needed to allocate
   the proper sized buffer for various EFI interfaces.
 
   @param[in, out]   Status          Current status
@@ -122,7 +122,7 @@ GrowBuffer (
 }
 
 /**
-  Append file name to existing file name, and allocate a new buffer 
+  Append file name to existing file name, and allocate a new buffer
   to hold the appended result.
 
   @param[in]  Str1  The existing file name
@@ -139,6 +139,7 @@ AppendFileName (
 {
   UINTN   Size1;
   UINTN   Size2;
+  UINTN   BufferSize;
   CHAR16  *Str;
   CHAR16  *TmpStr;
   CHAR16  *Ptr;
@@ -146,18 +147,20 @@ AppendFileName (
 
   Size1 = StrSize (Str1);
   Size2 = StrSize (Str2);
-  Str   = AllocateZeroPool (Size1 + Size2 + sizeof (CHAR16));
+  BufferSize = Size1 + Size2 + sizeof (CHAR16);
+  Str   = AllocateZeroPool (BufferSize);
   ASSERT (Str != NULL);
 
-  TmpStr = AllocateZeroPool (Size1 + Size2 + sizeof (CHAR16)); 
+  TmpStr = AllocateZeroPool (BufferSize);
   ASSERT (TmpStr != NULL);
 
-  StrCat (Str, Str1);
+  StrCatS (Str, BufferSize / sizeof (CHAR16), Str1);
+
   if (!((*Str == '\\') && (*(Str + 1) == 0))) {
-    StrCat (Str, L"\\");
+    StrCatS (Str, BufferSize / sizeof (CHAR16), L"\\");
   }
 
-  StrCat (Str, Str2);
+  StrCatS (Str, BufferSize / sizeof (CHAR16), Str2);
 
   Ptr       = Str;
   LastSlash = Str;
@@ -170,11 +173,11 @@ AppendFileName (
       //
 
       //
-      // Use TmpStr as a backup, as StrCpy in BaseLib does not handle copy of two strings 
+      // Use TmpStr as a backup, as StrCpyS in BaseLib does not handle copy of two strings
       // that overlap.
       //
-      StrCpy (TmpStr, Ptr + 3);
-      StrCpy (LastSlash, TmpStr);
+      StrCpyS (TmpStr, BufferSize / sizeof (CHAR16), Ptr + 3);
+      StrCpyS (LastSlash, BufferSize / sizeof (CHAR16), TmpStr);
       Ptr = LastSlash;
     } else if (*Ptr == '\\' && *(Ptr + 1) == '.' && *(Ptr + 2) == '\\') {
       //
@@ -182,11 +185,11 @@ AppendFileName (
       //
 
       //
-      // Use TmpStr as a backup, as StrCpy in BaseLib does not handle copy of two strings 
+      // Use TmpStr as a backup, as StrCpyS in BaseLib does not handle copy of two strings
       // that overlap.
       //
-      StrCpy (TmpStr, Ptr + 2);
-      StrCpy (Ptr, TmpStr);
+      StrCpyS (TmpStr, BufferSize / sizeof (CHAR16), Ptr + 2);
+      StrCpyS (Ptr, BufferSize / sizeof (CHAR16), TmpStr);
       Ptr = LastSlash;
     } else if (*Ptr == '\\') {
       LastSlash = Ptr;
@@ -196,7 +199,7 @@ AppendFileName (
   }
 
   FreePool (TmpStr);
-  
+
   return Str;
 }
 
@@ -354,7 +357,7 @@ DestroyMenuEntry (
   Free resources allocated in Allocate Rountine.
 
   @param[in, out]  MenuOption        Menu to be freed
-  
+
 **/
 VOID
 FreeMenu (
@@ -459,7 +462,7 @@ FileSystemVolumeLabelInfo (
   This function opens a file with the open mode according to the file path. The
   Attributes is valid only for EFI_FILE_MODE_CREATE.
 
-  @param[in, out]  FilePath        On input, the device path to the file.  
+  @param[in, out]  FilePath        On input, the device path to the file.
                                    On output, the remaining device path.
   @param[out]      FileHandle      Pointer to the file handle.
   @param[in]       OpenMode        The mode to open the file with.
@@ -495,7 +498,7 @@ OpenFileByDevicePath(
   EFI_SIMPLE_FILE_SYSTEM_PROTOCOL *EfiSimpleFileSystemProtocol;
   EFI_FILE_PROTOCOL               *Handle1;
   EFI_FILE_PROTOCOL               *Handle2;
-  EFI_HANDLE                      DeviceHandle; 
+  EFI_HANDLE                      DeviceHandle;
 
   if ((FilePath == NULL || FileHandle == NULL)) {
     return EFI_INVALID_PARAMETER;
@@ -652,7 +655,6 @@ FindFileSystem (
 {
   UINTN                     NoBlkIoHandles;
   UINTN                     NoSimpleFsHandles;
-  UINTN                     NoLoadFileHandles;
   EFI_HANDLE                *BlkIoHandle;
   EFI_HANDLE                *SimpleFsHandle;
   UINT16                    *VolumeLabel;
@@ -669,7 +671,6 @@ FindFileSystem (
 
 
   NoSimpleFsHandles = 0;
-  NoLoadFileHandles = 0;
   OptionNumber      = 0;
   InitializeListHead (&FsOptionMenu.Head);
 
@@ -816,7 +817,7 @@ FindFileSystem (
   if (NoSimpleFsHandles != 0) {
     FreePool (SimpleFsHandle);
   }
-  
+
   //
   // Remember how many file system options are here
   //
@@ -826,7 +827,7 @@ FindFileSystem (
 
 
 /**
-  Find files under the current directory. All files and sub-directories 
+  Find files under the current directory. All files and sub-directories
   in current directory will be stored in DirectoryMenu for future use.
 
   @param[in] MenuEntry     The Menu Entry.
@@ -892,7 +893,7 @@ FindFiles (
   if (DirInfo == NULL) {
     return EFI_OUT_OF_RESOURCES;
   }
-  
+
   //
   // Get all files in current directory
   // Pass 1 to get Directories
@@ -934,7 +935,7 @@ FindFiles (
                                     NewFileContext->FileName
                                     );
       NewMenuEntry->HelpString = NULL;
-      
+
       NewFileContext->IsDir = (BOOLEAN) ((DirInfo->Attribute & EFI_FILE_DIRECTORY) == EFI_FILE_DIRECTORY);
       if (NewFileContext->IsDir) {
         BufferSize = StrLen (DirInfo->FileName) * 2 + 6;
@@ -977,7 +978,7 @@ RefreshUpdateData (
 {
   //
   // Free current updated date
-  //  
+  //
   if (mStartOpCodeHandle != NULL) {
     HiiFreeOpCodeHandle (mStartOpCodeHandle);
   }
@@ -1032,6 +1033,9 @@ UpdateFileExplorePage (
   } else if (FeCurrentState == FileExplorerStateEnrollSignatureFileToDbx) {
     FormId     = SECUREBOOT_ENROLL_SIGNATURE_TO_DBX;
     FileFormId = FORM_FILE_EXPLORER_ID_DBX;
+  } else if (FeCurrentState == FileExplorerStateEnrollSignatureFileToDbt) {
+    FormId     = SECUREBOOT_ENROLL_SIGNATURE_TO_DBT;
+    FileFormId = FORM_FILE_EXPLORER_ID_DBT;
   } else {
     return;
   }
@@ -1118,7 +1122,7 @@ UpdateFileExplorer (
     //
     FreeMenu (&FsOptionMenu);
     FindFileSystem ();
-    
+
     CreateMenuStringToken (PrivateData->HiiHandle, &FsOptionMenu);
     UpdateFileExplorePage (PrivateData->HiiHandle, &FsOptionMenu, PrivateData->FeCurrentState);
 
@@ -1156,13 +1160,15 @@ UpdateFileExplorer (
         FormId = SECUREBOOT_ENROLL_SIGNATURE_TO_DB;
       } else if (PrivateData->FeCurrentState == FileExplorerStateEnrollSignatureFileToDbx) {
         FormId = SECUREBOOT_ENROLL_SIGNATURE_TO_DBX;
+      } else if (PrivateData->FeCurrentState == FileExplorerStateEnrollSignatureFileToDbt) {
+        FormId = SECUREBOOT_ENROLL_SIGNATURE_TO_DBT;
       } else {
         return FALSE;
       }
 
       PrivateData->MenuEntry = NewMenuEntry;
       PrivateData->FileContext->FileName = NewFileContext->FileName;
-      
+
       TmpDevicePath = NewFileContext->DevicePath;
       OpenFileByDevicePath (
         &TmpDevicePath,
@@ -1200,7 +1206,7 @@ OnExit:
 }
 
 /**
-  Clean up the dynamic opcode at label and form specified by both LabelId. 
+  Clean up the dynamic opcode at label and form specified by both LabelId.
 
   @param[in] LabelId         It is both the Form ID and Label ID for opcode deletion.
   @param[in] PrivateData     Module private data.
@@ -1226,4 +1232,3 @@ CleanUpPage (
     mEndOpCodeHandle    // LABEL_END
     );
 }
-

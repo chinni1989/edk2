@@ -1,7 +1,9 @@
 /** @file
   IP4 input process.
   
-Copyright (c) 2005 - 2012, Intel Corporation. All rights reserved.<BR>
+Copyright (c) 2005 - 2014, Intel Corporation. All rights reserved.<BR>
+(C) Copyright 2015 Hewlett-Packard Development Company, L.P.<BR>
+
 This program and the accompanying materials
 are licensed and made available under the terms and conditions of the BSD License
 which accompanies this distribution.  The full text of the license may be found at
@@ -292,7 +294,7 @@ Ip4Reassemble (
   // check whether THIS.Start < PREV.End for overlap. If two fragments
   // overlaps, trim the overlapped part off THIS fragment.
   //
-  if ((Cur != Head) && ((Prev = Cur->BackLink) != Head)) {
+  if ((Prev = Cur->BackLink) != Head) {
     Fragment  = NET_LIST_USER_STRUCT (Prev, NET_BUF, List);
     Node      = IP4_GET_CLIP_INFO (Fragment);
 
@@ -512,6 +514,11 @@ Ip4IpSecProcessPacket (
   IP4_HEAD                  ZeroHead;
 
   Status        = EFI_SUCCESS;
+
+  if (!mIpSec2Installed) {
+    goto ON_EXIT;
+  }
+  
   Packet        = *Netbuf;
   RecycleEvent  = NULL;
   IpSecWrap     = NULL;

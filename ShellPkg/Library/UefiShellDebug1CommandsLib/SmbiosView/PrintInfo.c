@@ -1,7 +1,9 @@
 /** @file
   Module for clarifying the content of the smbios structure element information.
 
-  Copyright (c) 2005 - 2012, Intel Corporation. All rights reserved.<BR>
+  Copyright (c) 2005 - 2015, Intel Corporation. All rights reserved.<BR>
+  (C) Copyright 2014 Hewlett-Packard Development Company, L.P.<BR>  
+  (C) Copyright 2015 Hewlett Packard Enterprise Development LP<BR>
   This program and the accompanying materials
   are licensed and made available under the terms and conditions of the BSD License
   which accompanies this distribution.  The full text of the license may be found at
@@ -199,6 +201,75 @@ SmbiosPrintEPSInfo (
 }
 
 /**
+  Print the info of 64-bit EPS(Entry Point Structure).
+
+  @param[in] SmbiosTable    Pointer to the SMBIOS table entry point.
+  @param[in] Option         Display option.
+**/
+VOID
+Smbios64BitPrintEPSInfo (
+  IN  SMBIOS_TABLE_3_0_ENTRY_POINT  *SmbiosTable,
+  IN  UINT8                         Option
+  )
+{
+  UINT8 Anchor[5];
+
+  if (SmbiosTable == NULL) {
+    ShellPrintHiiEx(-1,-1,NULL,STRING_TOKEN (STR_SMBIOSVIEW_PRINTINFO_SMBIOSTABLE_NULL), gShellDebug1HiiHandle);
+    return ;
+  }
+
+  if (Option == SHOW_NONE) {
+    return ;
+  }
+
+  if (Option >= SHOW_NORMAL) {
+    ShellPrintHiiEx(-1,-1,NULL,STRING_TOKEN (STR_SMBIOSVIEW_PRINTINFO_64_BIT_ENTRY_POINT_SIGN), gShellDebug1HiiHandle);
+
+    MemToString (Anchor, SmbiosTable->AnchorString, 5);
+    ShellPrintHiiEx(-1,-1,NULL,STRING_TOKEN (STR_SMBIOSVIEW_PRINTINFO_ANCHOR_STR), gShellDebug1HiiHandle, Anchor);
+
+    ShellPrintHiiEx(-1,-1,NULL,
+      STRING_TOKEN (STR_SMBIOSVIEW_PRINTINFO_EPS_CHECKSUM),
+      gShellDebug1HiiHandle,
+      SmbiosTable->EntryPointStructureChecksum
+     );
+
+    ShellPrintHiiEx(-1,-1,NULL,STRING_TOKEN (STR_SMBIOSVIEW_PRINTINFO_ENTRY_POINT_LEN), gShellDebug1HiiHandle, SmbiosTable->EntryPointLength);
+
+    ShellPrintHiiEx(-1,-1,NULL,
+      STRING_TOKEN (STR_SMBIOSVIEW_PRINTINFO_VERSION),
+      gShellDebug1HiiHandle,
+      SmbiosTable->MajorVersion,
+      SmbiosTable->MinorVersion
+     );
+
+    ShellPrintHiiEx(-1,-1,NULL,
+      STRING_TOKEN (STR_SMBIOSVIEW_PRINTINFO_DOCREV),
+      gShellDebug1HiiHandle,
+      SmbiosTable->DocRev
+     );
+
+    ShellPrintHiiEx(-1,-1,NULL,STRING_TOKEN (STR_SMBIOSVIEW_PRINTINFO_TABLE_MAX_SIZE), gShellDebug1HiiHandle, SmbiosTable->TableMaximumSize);
+
+    ShellPrintHiiEx(-1,-1,NULL,STRING_TOKEN (STR_SMBIOSVIEW_PRINTINFO_TABLE_ADDR), gShellDebug1HiiHandle, SmbiosTable->TableAddress);
+
+  }
+  //
+  // If SHOW_ALL, also print followings.
+  //
+  if (Option >= SHOW_DETAIL) {
+    ShellPrintHiiEx(-1,-1,NULL,
+      STRING_TOKEN (STR_SMBIOSVIEW_PRINTINFO_ENTRY_POINT_REVISION),
+      gShellDebug1HiiHandle,
+      SmbiosTable->EntryPointRevision
+     );
+  }
+
+  Print (L"\n");
+}
+
+/**
   This function print the content of the structure pointed by Struct.
 
   @param[in] Struct       Point to the structure to be printed.
@@ -361,6 +432,11 @@ SmbiosPrintStructure (
       PRINT_STRUCT_VALUE (Struct, Type4, EnabledCoreCount);
       PRINT_STRUCT_VALUE (Struct, Type4, ThreadCount);
       DisplayProcessorCharacteristics (Struct->Type4->ProcessorCharacteristics, Option);
+    }
+    if ((SmbiosMajorVersion >= 0x3) && (Struct->Hdr->Length > 0x2A)) {
+      PRINT_STRUCT_VALUE (Struct, Type4, CoreCount2);
+      PRINT_STRUCT_VALUE (Struct, Type4, EnabledCoreCount2);
+      PRINT_STRUCT_VALUE (Struct, Type4, ThreadCount2);
     }
     break;
 
@@ -645,6 +721,11 @@ SmbiosPrintStructure (
     if (AE_SMBIOS_VERSION (0x2, 0x7) && (Struct->Hdr->Length > 0x1C)) {
       PRINT_STRUCT_VALUE (Struct, Type17, ExtendedSize);
       PRINT_STRUCT_VALUE (Struct, Type17, ConfiguredMemoryClockSpeed);
+    }
+    if (AE_SMBIOS_VERSION (0x2, 0x8) && (Struct->Hdr->Length > 0x22)) {
+      PRINT_STRUCT_VALUE (Struct, Type17, MinimumVoltage);
+      PRINT_STRUCT_VALUE (Struct, Type17, MaximumVoltage);
+      PRINT_STRUCT_VALUE (Struct, Type17, ConfiguredVoltage);
     }
     break;
 
@@ -1532,6 +1613,10 @@ DisplayProcessorFamily (
     Print (L"AMD Opteron 4200 Series Processor\n");
     break;
 
+  case 0x3F:
+    ShellPrintHiiEx(-1,-1,NULL,STRING_TOKEN (STR_SMBIOSVIEW_PRINTINFO_AMD_FX_SERIES), gShellDebug1HiiHandle);
+    break;
+
   case 0x40:
     ShellPrintHiiEx(-1,-1,NULL,STRING_TOKEN (STR_SMBIOSVIEW_PRINTINFO_MIPS_FAMILY), gShellDebug1HiiHandle);
     break;
@@ -1565,11 +1650,35 @@ DisplayProcessorFamily (
     break;
 
   case 0x48:
-    Print (L"AMD S-Series Processor\n");
+    Print (L"AMD A-Series Processor\n");
     break;
 
   case 0x49:
     Print (L"AMD G-Series Processor\n");
+    break;
+
+  case 0x4A:
+    ShellPrintHiiEx(-1,-1,NULL,STRING_TOKEN (STR_SMBIOSVIEW_PRINTINFO_AMD_Z_SERIES), gShellDebug1HiiHandle);
+    break;
+
+  case 0x4B:
+    ShellPrintHiiEx(-1,-1,NULL,STRING_TOKEN (STR_SMBIOSVIEW_PRINTINFO_AMD_R_SERIES), gShellDebug1HiiHandle);
+    break;
+
+  case 0x4C:
+    ShellPrintHiiEx(-1,-1,NULL,STRING_TOKEN (STR_SMBIOSVIEW_PRINTINFO_AMD_OPTERON_4300_SERIES), gShellDebug1HiiHandle);
+    break;
+
+  case 0x4D:
+    ShellPrintHiiEx(-1,-1,NULL,STRING_TOKEN (STR_SMBIOSVIEW_PRINTINFO_AMD_OPTERON_6300_SERIES), gShellDebug1HiiHandle);
+    break;
+
+  case 0x4E:
+    ShellPrintHiiEx(-1,-1,NULL,STRING_TOKEN (STR_SMBIOSVIEW_PRINTINFO_AMD_OPTERON_3300_SERIES), gShellDebug1HiiHandle);
+    break;
+
+  case 0x4F:
+    ShellPrintHiiEx(-1,-1,NULL,STRING_TOKEN (STR_SMBIOSVIEW_PRINTINFO_AMD_OPTERON_FIREPRO_SERIES), gShellDebug1HiiHandle);
     break;
 
   case 0x50:
@@ -1909,7 +2018,7 @@ DisplayProcessorFamily (
     break;
 
   case 0xCC:
-    Print (L"zArchitectur\n");
+    Print (L"zArchitecture\n");
     break;
 
   case 0xCD:
@@ -1971,6 +2080,15 @@ DisplayProcessorFamily (
   case 0xE0:
     Print (L"Multi-Core Intel Xeon processor 3400 Series\n");
     break;
+
+  case 0xE4:
+    ShellPrintHiiEx(-1,-1,NULL,STRING_TOKEN (STR_SMBIOSVIEW_PRINTINFO_AMD_OPTERON_3000_SERIES), gShellDebug1HiiHandle);
+    break;
+
+  case 0xE5:
+    ShellPrintHiiEx(-1,-1,NULL,STRING_TOKEN (STR_SMBIOSVIEW_PRINTINFO_AMD_SEMPRON_II), gShellDebug1HiiHandle);
+    break;
+
 
   case 0xE6:
     ShellPrintHiiEx(-1,-1,NULL,STRING_TOKEN (STR_SMBIOSVIEW_PRINTINFO_AMD_EMBEDDED_OPTERON_QUAD_CORE), gShellDebug1HiiHandle);

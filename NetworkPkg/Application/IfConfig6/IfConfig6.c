@@ -1,7 +1,7 @@
 /** @file
   The implementation for Shell application IfConfig6.
 
-  Copyright (c) 2009 - 2011, Intel Corporation. All rights reserved.<BR>
+  Copyright (c) 2009 - 2015, Intel Corporation. All rights reserved.<BR>
 
   This program and the accompanying materials
   are licensed and made available under the terms and conditions of the BSD License
@@ -127,16 +127,15 @@ SplitStrToList (
   ARG_LIST    *ArgList;
   ARG_LIST    *ArgNode;
 
-  if (*String == L'\0') {
+  if (String == NULL || *String == L'\0') {
     return NULL;
   }
 
   //
   // Copy the CONST string to a local copy.
   //
-  Str     = (CHAR16 *) AllocateZeroPool (StrSize (String));
+  Str     = AllocateCopyPool (StrSize (String), String);
   ASSERT (Str != NULL);
-  Str     = StrCpy (Str, String);
   ArgStr  = Str;
 
   //
@@ -365,6 +364,7 @@ IfConfig6ParseManualAddressList (
   UINT8                            Prefix;
   UINT8                            AddrCnt;
 
+  Prefix   = 0;
   AddrCnt  = 0;
   *BufSize = 0;
   *Buf     = NULL;
@@ -1716,10 +1716,8 @@ IfConfig6Initialize (
     Private->OpCode = IfConfig6OpList;
     ValueStr = ShellCommandLineGetValue (ParamPackage, L"-l");
     if (ValueStr != NULL) {
-      Str             = (CHAR16 *) AllocateZeroPool (StrSize (ValueStr));
+      Str             = AllocateCopyPool (StrSize (ValueStr), ValueStr);
       ASSERT (Str != NULL);
-
-      Str             = StrCpy (Str, ValueStr);
       Private->IfName = Str;
     }
   }
@@ -1730,10 +1728,8 @@ IfConfig6Initialize (
     Private->OpCode = IfConfig6OpClear;
     ValueStr = ShellCommandLineGetValue (ParamPackage, L"-r");
     if (ValueStr != NULL) {
-      Str             = (CHAR16 *) AllocateZeroPool (StrSize (ValueStr));
+      Str             = AllocateCopyPool (StrSize (ValueStr), ValueStr);
       ASSERT (Str != NULL);
-
-      Str             = StrCpy (Str, ValueStr);
       Private->IfName = Str;
     }
   }

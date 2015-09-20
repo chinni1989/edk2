@@ -1,7 +1,7 @@
 ## @file
 # Trim files preprocessed by compiler
 #
-# Copyright (c) 2007 - 2010, Intel Corporation. All rights reserved.<BR>
+# Copyright (c) 2007 - 2014, Intel Corporation. All rights reserved.<BR>
 # This program and the accompanying materials
 # are licensed and made available under the terms and conditions of the BSD License
 # which accompanies this distribution.  The full text of the license may be found at
@@ -14,7 +14,7 @@
 ##
 # Import Modules
 #
-import os
+import Common.LongFilePathOs as os
 import sys
 import re
 
@@ -24,6 +24,7 @@ from Common.BuildToolError import *
 from Common.Misc import *
 from Common.BuildVersion import gBUILD_VERSION
 import Common.EdkLogger as EdkLogger
+from Common.LongFilePathSupport import OpenLongFilePath as open
 
 # Version and Copyright
 __version_number__ = ("0.10" + " " + gBUILD_VERSION)
@@ -176,13 +177,13 @@ def TrimPreprocessedFile(Source, Target, ConvertHex, TrimLong):
             EdkLogger.verbose("Found original file content starting from line %d"
                               % (LineIndexOfOriginalFile + 1))
 
+        if TrimLong:
+            Line = gLongNumberPattern.sub(r"\1", Line)
         # convert HEX number format if indicated
         if ConvertHex:
             Line = gHexNumberPattern.sub(r"0\2h", Line)
         else:
             Line = gHexNumberPattern.sub(r"\1\2", Line)
-        if TrimLong:
-            Line = gLongNumberPattern.sub(r"\1", Line)
 
         # convert Decimal number format
         Line = gDecNumberPattern.sub(r"\1", Line)
@@ -593,7 +594,7 @@ def Main():
                     "\nTrim",
                     CODE_ERROR,
                     "Unknown fatal error when trimming [%s]" % InputFile,
-                    ExtraData="\n(Please send email to edk2-buildtools-devel@lists.sourceforge.net for help, attaching following call stack trace!)\n",
+                    ExtraData="\n(Please send email to edk2-devel@lists.sourceforge.net for help, attaching following call stack trace!)\n",
                     RaiseError=False
                     )
         EdkLogger.quiet("(Python %s on %s) " % (platform.python_version(), sys.platform) + traceback.format_exc())

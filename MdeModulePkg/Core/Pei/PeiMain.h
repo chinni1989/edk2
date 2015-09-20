@@ -1,7 +1,7 @@
 /** @file
   Definition of Pei Core Structures and Services
   
-Copyright (c) 2006 - 2013, Intel Corporation. All rights reserved.<BR>
+Copyright (c) 2006 - 2015, Intel Corporation. All rights reserved.<BR>
 This program and the accompanying materials
 are licensed and made available under the terms and conditions of the BSD License
 which accompanies this distribution.  The full text of the license may be found at
@@ -20,6 +20,7 @@ WITHOUT WARRANTIES OR REPRESENTATIONS OF ANY KIND, EITHER EXPRESS OR IMPLIED.
 #include <Ppi/MemoryDiscovered.h>
 #include <Ppi/StatusCode.h>
 #include <Ppi/Reset.h>
+#include <Ppi/Reset2.h>
 #include <Ppi/FirmwareVolume.h>
 #include <Ppi/FirmwareVolumeInfo.h>
 #include <Ppi/FirmwareVolumeInfo2.h>
@@ -89,9 +90,9 @@ typedef struct {
   /// 
   INTN                    LastDispatchedNotify;
   ///
-  /// Ppi database.
+  /// Ppi database has the PcdPeiCoreMaxPpiSupported number of entries.
   ///
-  PEI_PPI_LIST_POINTERS   PpiListPtrs[FixedPcdGet32 (PcdPeiCoreMaxPpiSupported)];
+  PEI_PPI_LIST_POINTERS   *PpiListPtrs;
 } PEI_PPI_DATABASE;
 
 
@@ -109,8 +110,14 @@ typedef struct {
   EFI_FIRMWARE_VOLUME_HEADER          *FvHeader;
   EFI_PEI_FIRMWARE_VOLUME_PPI         *FvPpi;
   EFI_PEI_FV_HANDLE                   FvHandle;
-  UINT8                               PeimState[FixedPcdGet32 (PcdPeiCoreMaxPeimPerFv)];
-  EFI_PEI_FILE_HANDLE                 FvFileHandles[FixedPcdGet32 (PcdPeiCoreMaxPeimPerFv)];
+  //
+  // Ponter to the buffer with the PcdPeiCoreMaxPeimPerFv number of Entries.
+  //
+  UINT8                               *PeimState;
+  //
+  // Ponter to the buffer with the PcdPeiCoreMaxPeimPerFv number of Entries.
+  //
+  EFI_PEI_FILE_HANDLE                 *FvFileHandles;
   BOOLEAN                             ScanFv;
   UINT32                              AuthenticationStatus;
 } PEI_CORE_FV_HANDLE;
@@ -188,13 +195,22 @@ struct _PEI_CORE_INSTANCE {
   UINTN                              FvCount;
   
   ///
-  /// The instance arrary for FVs which contains FFS and could be dispatched by PeiCore.
+  /// Pointer to the buffer with the PcdPeiCoreMaxFvSupported number of entries.
+  /// Each entry is for one FV which contains FFS and could be dispatched by PeiCore.
   ///
-  PEI_CORE_FV_HANDLE                 Fv[FixedPcdGet32 (PcdPeiCoreMaxFvSupported)];
-  PEI_CORE_UNKNOW_FORMAT_FV_INFO     UnknownFvInfo[FixedPcdGet32 (PcdPeiCoreMaxFvSupported)];
+  PEI_CORE_FV_HANDLE                 *Fv;
+
+  ///
+  /// Pointer to the buffer with the PcdPeiCoreMaxFvSupported number of entries.
+  /// Each entry is for one FV which could not be dispatched by PeiCore.
+  ///
+  PEI_CORE_UNKNOW_FORMAT_FV_INFO     *UnknownFvInfo;
   UINTN                              UnknownFvInfoCount;
   
-  EFI_PEI_FILE_HANDLE                CurrentFvFileHandles[FixedPcdGet32 (PcdPeiCoreMaxPeimPerFv)];
+  ///
+  /// Pointer to the buffer with the PcdPeiCoreMaxPeimPerFv number of entries.
+  ///
+  EFI_PEI_FILE_HANDLE                *CurrentFvFileHandles;
   UINTN                              AprioriCount;
   UINTN                              CurrentPeimFvCount;
   UINTN                              CurrentPeimCount;
@@ -234,6 +250,16 @@ struct _PEI_CORE_INSTANCE {
   // This field points to the shadowed image read function
   //
   PE_COFF_LOADER_READ_FILE          ShadowedImageRead;
+
+  //
+  // Pointer to the temp buffer with the PcdPeiCoreMaxPeimPerFv + 1 number of entries.
+  //
+  EFI_PEI_FILE_HANDLE               *FileHandles;
+  //
+  // Pointer to the temp buffer with the PcdPeiCoreMaxPeimPerFv number of entries.
+  //
+  EFI_GUID                          *FileGuid;
+
   //
   // Temp Memory Range is not covered by PeiTempMem and Stack.
   // Those Memory Range will be migrated into phisical memory. 
@@ -936,6 +962,30 @@ EFI_STATUS
 EFIAPI
 PeiResetSystem (
   IN CONST EFI_PEI_SERVICES   **PeiServices
+  );
+
+/**
+  Resets the entire platform.
+
+  @param[in] ResetType      The type of reset to perform.
+  @param[in] ResetStatus    The status code for the reset.
+  @param[in] DataSize       The size, in bytes, of WatchdogData.
+  @param[in] ResetData      For a ResetType of EfiResetCold, EfiResetWarm, or EfiResetShutdown
+                            the data buffer starts with a Null-terminated string, optionally
+                            followed by additional binary data. The string is a description
+                            that the caller may use to further indicate the reason for the
+                            system reset. ResetData is only valid if ResetStatus is something
+                            other than EFI_SUCCESS unless the ResetType is EfiResetPlatformSpecific
+                            where a minimum amount of ResetData is always required.
+
+**/
+VOID
+EFIAPI
+PeiResetSystem2 (
+  IN EFI_RESET_TYPE     ResetType,
+  IN EFI_STATUS         ResetStatus,
+  IN UINTN              DataSize,
+  IN VOID               *ResetData OPTIONAL
   );
 
 /**

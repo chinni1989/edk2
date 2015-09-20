@@ -1,7 +1,7 @@
 ## @file
 # The engine for building files
 #
-# Copyright (c) 2007, Intel Corporation. All rights reserved.<BR>
+# Copyright (c) 2007 - 2014, Intel Corporation. All rights reserved.<BR>
 # This program and the accompanying materials
 # are licensed and made available under the terms and conditions of the BSD License
 # which accompanies this distribution.  The full text of the license may be found at
@@ -14,10 +14,11 @@
 ##
 # Import Modules
 #
-import os
+import Common.LongFilePathOs as os
 import re
 import copy
 import string
+from Common.LongFilePathSupport import OpenLongFilePath as open
 
 from Common.GlobalData import *
 from Common.BuildToolError import *
@@ -219,7 +220,7 @@ class FileBuildRule:
     #
     #   @retval     tuple       (Source file in full path, List of individual sourcefiles, Destionation file, List of build commands)
     #
-    def Apply(self, SourceFile):
+    def Apply(self, SourceFile, BuildRuleOrder=None):
         if not self.CommandList or not self.DestFileList:
             return None
 
@@ -280,13 +281,20 @@ class FileBuildRule:
 
         if DstFile[0] in self.BuildTargets:
             TargetDesc = self.BuildTargets[DstFile[0]]
-            TargetDesc.AddInput(SourceFile)
+            if BuildRuleOrder and SourceFile.Ext in BuildRuleOrder:
+                Index = BuildRuleOrder.index(SourceFile.Ext)
+                for Input in TargetDesc.Inputs:
+                    if Input.Ext not in BuildRuleOrder or BuildRuleOrder.index(Input.Ext) > Index:
+                        #
+                        # Command line should be regenerated since some macros are different
+                        #
+                        CommandList = self._BuildCommand(BuildRulePlaceholderDict)
+                        TargetDesc._Init([SourceFile], DstFile, CommandList, self.ExtraSourceFileList)
+                        break
+            else:
+                TargetDesc.AddInput(SourceFile)
         else:
-            CommandList = []
-            for CommandString in self.CommandList:
-                CommandString = string.Template(CommandString).safe_substitute(BuildRulePlaceholderDict)
-                CommandString = string.Template(CommandString).safe_substitute(BuildRulePlaceholderDict)
-                CommandList.append(CommandString)
+            CommandList = self._BuildCommand(BuildRulePlaceholderDict)
             TargetDesc = TargetDescBlock([SourceFile], DstFile, CommandList, self.ExtraSourceFileList)
             TargetDesc.ListFileMacro = self.ListFileMacro
             TargetDesc.FileListMacro = self.FileListMacro
@@ -296,6 +304,14 @@ class FileBuildRule:
             TargetDesc.GenIncListFile = self.GenIncListFile
             self.BuildTargets[DstFile[0]] = TargetDesc
         return TargetDesc
+
+    def _BuildCommand(self, Macros):
+        CommandList = []
+        for CommandString in self.CommandList:
+            CommandString = string.Template(CommandString).safe_substitute(Macros)
+            CommandString = string.Template(CommandString).safe_substitute(Macros)
+            CommandList.append(CommandString)
+        return CommandList
 
 ## Class for build rules
 #

@@ -1,7 +1,7 @@
 /** @file
   HII Library implementation that uses DXE protocols and services.
 
-  Copyright (c) 2006 - 2013, Intel Corporation. All rights reserved.<BR>
+  Copyright (c) 2006 - 2015, Intel Corporation. All rights reserved.<BR>
   This program and the accompanying materials
   are licensed and made available under the terms and conditions of the BSD License
   which accompanies this distribution.  The full text of the license may be found at
@@ -606,6 +606,7 @@ HiiConstructConfigHdr (
   CHAR16                    *ReturnString;
   UINTN                     Index;
   UINT8                     *Buffer;
+  UINTN                     MaxLen;
 
   //
   // Compute the length of Name in Unicode characters.  
@@ -636,7 +637,8 @@ HiiConstructConfigHdr (
   // GUID=<HexCh>32&NAME=<Char>NameLength&PATH=<HexChar>DevicePathSize <Null>
   // | 5 | sizeof (EFI_GUID) * 2 | 6 | NameStrLen*4 | 6 | DevicePathSize * 2 | 1 |
   //
-  String = AllocateZeroPool ((5 + sizeof (EFI_GUID) * 2 + 6 + NameLength * 4 + 6 + DevicePathSize * 2 + 1) * sizeof (CHAR16));
+  MaxLen = 5 + sizeof (EFI_GUID) * 2 + 6 + NameLength * 4 + 6 + DevicePathSize * 2 + 1;
+  String = AllocateZeroPool (MaxLen * sizeof (CHAR16));
   if (String == NULL) {
     return NULL;
   }
@@ -644,7 +646,8 @@ HiiConstructConfigHdr (
   //
   // Start with L"GUID="
   //
-  ReturnString = StrCpy (String, L"GUID=");
+  StrCpyS (String, MaxLen, L"GUID=");
+  ReturnString = String;
   String += StrLen (String);
 
   if (Guid != NULL) {
@@ -659,7 +662,7 @@ HiiConstructConfigHdr (
   //
   // Append L"&NAME="
   //
-  StrCpy (String, L"&NAME=");
+  StrCatS (ReturnString, MaxLen, L"&NAME=");
   String += StrLen (String);
 
   if (Name != NULL) {
@@ -674,7 +677,7 @@ HiiConstructConfigHdr (
   //
   // Append L"&PATH="
   //
-  StrCpy (String, L"&PATH=");
+  StrCatS (ReturnString, MaxLen, L"&PATH=");
   String += StrLen (String);
 
   //
@@ -786,7 +789,7 @@ InternalHiiGetBufferFromString (
     StringPtr = (CHAR16 *) DataBuffer;
     ZeroMem (TemStr, sizeof (TemStr));
     for (Index = 0; Index < Length; Index += 4) {
-      StrnCpy (TemStr, ConfigHdr + Index, 4);
+      StrnCpyS (TemStr, sizeof (TemStr) / sizeof (CHAR16), ConfigHdr + Index, 4);
       StringPtr[Index/4] = (CHAR16) StrHexToUint64 (TemStr);
     }
     //
@@ -1298,41 +1301,77 @@ ValidateQuestionFromVfr (
             VarValue = 0;
             CopyMem (&VarValue, VarBuffer +  Offset, Width);
           }
-          switch (IfrNumeric->Flags & EFI_IFR_NUMERIC_SIZE) {
-          case EFI_IFR_NUMERIC_SIZE_1:
-            if ((UINT8) VarValue < IfrNumeric->data.u8.MinValue || (UINT8) VarValue > IfrNumeric->data.u8.MaxValue) {
-              //
-              // Not in the valid range.
-              //
-              return EFI_INVALID_PARAMETER;
+          if ((IfrNumeric->Flags & EFI_IFR_DISPLAY) == 0) {
+            switch (IfrNumeric->Flags & EFI_IFR_NUMERIC_SIZE) {
+            case EFI_IFR_NUMERIC_SIZE_1:
+              if ((INT8) VarValue < (INT8) IfrNumeric->data.u8.MinValue || (INT8) VarValue > (INT8) IfrNumeric->data.u8.MaxValue) {
+                //
+                // Not in the valid range.
+                //
+                return EFI_INVALID_PARAMETER;
+              }
+              break;
+            case EFI_IFR_NUMERIC_SIZE_2:
+              if ((INT16) VarValue < (INT16) IfrNumeric->data.u16.MinValue || (INT16) VarValue > (INT16) IfrNumeric->data.u16.MaxValue) {
+                //
+                // Not in the valid range.
+                //
+                return EFI_INVALID_PARAMETER;
+              }
+              break;
+            case EFI_IFR_NUMERIC_SIZE_4:
+              if ((INT32) VarValue < (INT32) IfrNumeric->data.u32.MinValue || (INT32) VarValue > (INT32) IfrNumeric->data.u32.MaxValue) {
+                //
+                // Not in the valid range.
+                //
+                return EFI_INVALID_PARAMETER;
+              }
+              break;
+            case EFI_IFR_NUMERIC_SIZE_8:
+              if ((INT64) VarValue < (INT64) IfrNumeric->data.u64.MinValue || (INT64) VarValue > (INT64) IfrNumeric->data.u64.MaxValue) {
+                //
+                // Not in the valid range.
+                //
+                return EFI_INVALID_PARAMETER;
+              }
+              break;
             }
-            break;
-          case EFI_IFR_NUMERIC_SIZE_2:
-            if ((UINT16) VarValue < IfrNumeric->data.u16.MinValue || (UINT16) VarValue > IfrNumeric->data.u16.MaxValue) {
-              //
-              // Not in the valid range.
-              //
-              return EFI_INVALID_PARAMETER;
+          } else {
+            switch (IfrNumeric->Flags & EFI_IFR_NUMERIC_SIZE) {
+            case EFI_IFR_NUMERIC_SIZE_1:
+              if ((UINT8) VarValue < IfrNumeric->data.u8.MinValue || (UINT8) VarValue > IfrNumeric->data.u8.MaxValue) {
+                //
+                // Not in the valid range.
+                //
+                return EFI_INVALID_PARAMETER;
+              }
+              break;
+            case EFI_IFR_NUMERIC_SIZE_2:
+              if ((UINT16) VarValue < IfrNumeric->data.u16.MinValue || (UINT16) VarValue > IfrNumeric->data.u16.MaxValue) {
+                //
+                // Not in the valid range.
+                //
+                return EFI_INVALID_PARAMETER;
+              }
+              break;
+            case EFI_IFR_NUMERIC_SIZE_4:
+              if ((UINT32) VarValue < IfrNumeric->data.u32.MinValue || (UINT32) VarValue > IfrNumeric->data.u32.MaxValue) {
+                //
+                // Not in the valid range.
+                //
+                return EFI_INVALID_PARAMETER;
+              }
+              break;
+            case EFI_IFR_NUMERIC_SIZE_8:
+              if ((UINT64) VarValue < IfrNumeric->data.u64.MinValue || (UINT64) VarValue > IfrNumeric->data.u64.MaxValue) {
+                //
+                // Not in the valid range.
+                //
+                return EFI_INVALID_PARAMETER;
+              }
+              break;
             }
-            break;
-          case EFI_IFR_NUMERIC_SIZE_4:
-            if ((UINT32) VarValue < IfrNumeric->data.u32.MinValue || (UINT32) VarValue > IfrNumeric->data.u32.MaxValue) {
-              //
-              // Not in the valid range.
-              //
-              return EFI_INVALID_PARAMETER;
-            }
-            break;
-          case EFI_IFR_NUMERIC_SIZE_8:
-            if ((UINT64) VarValue < IfrNumeric->data.u64.MinValue || (UINT64) VarValue > IfrNumeric->data.u64.MaxValue) {
-              //
-              // Not in the valid range.
-              //
-              return EFI_INVALID_PARAMETER;
-            }
-            break;
           }
-
           break;
         case EFI_IFR_CHECKBOX_OP:
           //
@@ -1975,6 +2014,7 @@ InternalHiiIfrValueAction (
 
   EFI_HII_PACKAGE_LIST_HEADER  *HiiPackageList;
   UINTN                        PackageListLength;
+  UINTN                        MaxLen;
   EFI_DEVICE_PATH_PROTOCOL     *DevicePath;
   EFI_DEVICE_PATH_PROTOCOL     *TempDevicePath;
 
@@ -2230,14 +2270,15 @@ NextConfigAltResp:
     // Construct ConfigAltHdr string  "&<ConfigHdr>&ALTCFG=\0" 
     //                               | 1 | StrLen (ConfigHdr) | 8 | 1 |
     //
-    ConfigAltHdr = AllocateZeroPool ((1 + StringPtr - StringHdr + 8 + 1) * sizeof (CHAR16));
+    MaxLen = 1 + StringPtr - StringHdr + 8 + 1;
+    ConfigAltHdr = AllocateZeroPool ( MaxLen * sizeof (CHAR16));
     if (ConfigAltHdr == NULL) {
       Status = EFI_OUT_OF_RESOURCES;
       goto Done;
     }
-    StrCpy (ConfigAltHdr, L"&");
-    StrnCat (ConfigAltHdr, StringHdr, StringPtr - StringHdr);
-    StrCat (ConfigAltHdr, L"&ALTCFG=");
+    StrCpyS (ConfigAltHdr, MaxLen, L"&");
+    StrnCatS (ConfigAltHdr, MaxLen, StringHdr, StringPtr - StringHdr);
+    StrCatS (ConfigAltHdr, MaxLen, L"&ALTCFG=");
     
     //
     // Skip all AltResp (AltConfigHdr ConfigBody) for the same ConfigHdr

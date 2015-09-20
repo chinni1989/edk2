@@ -2,7 +2,7 @@
   Produces Simple Text Input Protocol, Simple Text Input Extended Protocol and
   Simple Text Output Protocol upon Serial IO Protocol.
 
-Copyright (c) 2006 - 2012, Intel Corporation. All rights reserved.<BR>
+Copyright (c) 2006 - 2014, Intel Corporation. All rights reserved.<BR>
 This program and the accompanying materials
 are licensed and made available under the terms and conditions of the BSD License
 which accompanies this distribution.  The full text of the license may be found at
@@ -33,7 +33,8 @@ EFI_GUID  *gTerminalType[] = {
   &gEfiPcAnsiGuid,
   &gEfiVT100Guid,
   &gEfiVT100PlusGuid,
-  &gEfiVTUTF8Guid
+  &gEfiVTUTF8Guid,
+  &gEfiTtyTermGuid
 };
 
 
@@ -80,6 +81,12 @@ TERMINAL_DEV  mTerminalDevTemplate = {
   NULL, // TwoSecondTimeOut
   INPUT_STATE_DEFAULT,
   RESET_STATE_DEFAULT,
+  {
+      0,
+      0,
+      0
+  },
+  0,
   FALSE,
   {   // SimpleTextInputEx
     TerminalConInResetEx,
@@ -152,12 +159,13 @@ TerminalDriverBindingSupported (
 
       }
       //
-      // only supports PC ANSI, VT100, VT100+ and VT-UTF8 terminal types
+      // only supports PC ANSI, VT100, VT100+, VT-UTF8, and TtyTerm terminal types
       //
       if (!CompareGuid (&Node->Guid, &gEfiPcAnsiGuid) &&
           !CompareGuid (&Node->Guid, &gEfiVT100Guid) &&
           !CompareGuid (&Node->Guid, &gEfiVT100PlusGuid) &&
-          !CompareGuid (&Node->Guid, &gEfiVTUTF8Guid)) {
+          !CompareGuid (&Node->Guid, &gEfiVTUTF8Guid) &&
+          !CompareGuid (&Node->Guid, &gEfiTtyTermGuid)) {
 
         return EFI_UNSUPPORTED;
       }
@@ -250,14 +258,13 @@ BuildTerminalDevpath  (
   EFI_STATUS                        Status;
 
   TerminalDevicePath = NULL;
-  TerminalType = PCANSITYPE;
 
   //
   // Use the RemainingDevicePath to determine the terminal type
   //
   Node = (VENDOR_DEVICE_PATH *) RemainingDevicePath;
   if (Node == NULL) {
-    TerminalType = PCANSITYPE;
+    TerminalType = PcdGet8 (PcdDefaultTerminalType);
 
   } else if (CompareGuid (&Node->Guid, &gEfiPcAnsiGuid)) {
 
@@ -274,6 +281,10 @@ BuildTerminalDevpath  (
   } else if (CompareGuid (&Node->Guid, &gEfiVTUTF8Guid)) {
 
     TerminalType = VTUTF8TYPE;
+
+  } else if (CompareGuid (&Node->Guid, &gEfiTtyTermGuid)) {
+
+    TerminalType = TTYTERMTYPE;
 
   } else {
     return NULL;
@@ -533,7 +544,6 @@ TerminalDriverBindingStart (
   EFI_SERIAL_IO_PROTOCOL              *SerialIo;
   EFI_DEVICE_PATH_PROTOCOL            *ParentDevicePath;
   VENDOR_DEVICE_PATH                  *Node;
-  VENDOR_DEVICE_PATH                  *DefaultNode;
   EFI_SERIAL_IO_MODE                  *Mode;
   UINTN                               SerialInTimeOut;
   TERMINAL_DEV                        *TerminalDevice;
@@ -553,10 +563,9 @@ TerminalDriverBindingStart (
   UINTN                               ModeCount;
 
   TerminalDevice     = NULL;
-  DefaultNode        = NULL;
-  ConInSelected       = FALSE;
-  ConOutSelected      = FALSE;
-  NullRemaining      = TRUE;
+  ConInSelected      = FALSE;
+  ConOutSelected     = FALSE;
+  NullRemaining      = FALSE;
   SimTxtInInstalled  = FALSE;
   SimTxtOutInstalled = FALSE;
   FirstEnter         = FALSE;
@@ -697,23 +706,14 @@ TerminalDriverBindingStart (
     }
 
     //
-    // If RemainingDevicePath is NULL, then create default device path node
+    // If RemainingDevicePath is NULL, use default terminal type
     //
     if (RemainingDevicePath == NULL) {
-      DefaultNode = AllocateZeroPool (sizeof (VENDOR_DEVICE_PATH));
-      if (DefaultNode == NULL) {
-        Status = EFI_OUT_OF_RESOURCES;
-        goto Error;
-      }
-
       TerminalType = PcdGet8 (PcdDefaultTerminalType);
       //
-      // Must be between PCANSITYPE (0) and VTUTF8TYPE (3)
+      // Must be between PCANSITYPE (0) and TTYTERMTYPE (4)
       //
-      ASSERT (TerminalType <= VTUTF8TYPE);
-
-      CopyMem (&DefaultNode->Guid, gTerminalType[TerminalType], sizeof (EFI_GUID));
-      RemainingDevicePath = (EFI_DEVICE_PATH_PROTOCOL *) DefaultNode;
+      ASSERT (TerminalType <= TTYTERMTYPE);
     } else if (!IsDevicePathEnd (RemainingDevicePath)) {
       //
       // If RemainingDevicePath isn't the End of Device Path Node,
@@ -728,6 +728,8 @@ TerminalDriverBindingStart (
         TerminalType = VT100PLUSTYPE;
       } else if (CompareGuid (&Node->Guid, &gEfiVTUTF8Guid)) {
         TerminalType = VTUTF8TYPE;
+      } else if (CompareGuid (&Node->Guid, &gEfiTtyTermGuid)) {
+        TerminalType = TTYTERMTYPE;
       } else {
         goto Error;
       }
@@ -922,6 +924,24 @@ TerminalDriverBindingStart (
         gTerminalComponentName2.SupportedLanguages,
         &TerminalDevice->ControllerNameTable,
         (CHAR16 *)L"VT-UTF8 Serial Console",
+        FALSE
+        );
+
+      break;
+
+    case TTYTERMTYPE:
+      AddUnicodeString2 (
+        "eng",
+        gTerminalComponentName.SupportedLanguages,
+        &TerminalDevice->ControllerNameTable,
+        (CHAR16 *)L"Tty Terminal Serial Console",
+        TRUE
+        );
+      AddUnicodeString2 (
+        "en",
+        gTerminalComponentName2.SupportedLanguages,
+        &TerminalDevice->ControllerNameTable,
+        (CHAR16 *)L"Tty Terminal Serial Console",
         FALSE
         );
 
@@ -1151,9 +1171,6 @@ TerminalDriverBindingStart (
       goto Error;
     }
   }
-  if (DefaultNode != NULL) {
-    FreePool (DefaultNode);
-  }
 
   return EFI_SUCCESS;
 
@@ -1220,10 +1237,6 @@ Error:
 
       FreePool (TerminalDevice);
     }
-  }
-
-  if (DefaultNode != NULL) {
-    FreePool (DefaultNode);
   }
 
   This->Stop (This, Controller, 0, NULL);
@@ -1422,11 +1435,13 @@ TerminalUpdateConsoleDevVariable (
   )
 {
   EFI_STATUS                Status;
+  UINTN                     NameSize;
   UINTN                     VariableSize;
   UINT8                     TerminalType;
   EFI_DEVICE_PATH_PROTOCOL  *Variable;
   EFI_DEVICE_PATH_PROTOCOL  *NewVariable;
   EFI_DEVICE_PATH_PROTOCOL  *TempDevicePath;
+  EDKII_SET_VARIABLE_STATUS *SetVariableStatus;
 
   //
   // Get global variable and its size according to the name given.
@@ -1439,9 +1454,10 @@ TerminalUpdateConsoleDevVariable (
   //
   // Append terminal device path onto the variable.
   //
-  for (TerminalType = PCANSITYPE; TerminalType <= VTUTF8TYPE; TerminalType++) {
+  for (TerminalType = PCANSITYPE; TerminalType <= TTYTERMTYPE; TerminalType++) {
     SetTerminalDevicePath (TerminalType, ParentDevicePath, &TempDevicePath);
     NewVariable = AppendDevicePathInstance (Variable, TempDevicePath);
+    ASSERT (NewVariable != NULL);
     if (Variable != NULL) {
       FreePool (Variable);
     }
@@ -1462,7 +1478,33 @@ TerminalUpdateConsoleDevVariable (
                   VariableSize,
                   Variable
                   );
-  ASSERT_EFI_ERROR (Status);
+
+  if (EFI_ERROR (Status)) {
+    NameSize = StrSize (VariableName);
+    SetVariableStatus = AllocatePool (sizeof (EDKII_SET_VARIABLE_STATUS) + NameSize + VariableSize);
+    if (SetVariableStatus != NULL) {
+      CopyGuid (&SetVariableStatus->Guid, &gEfiGlobalVariableGuid);
+      SetVariableStatus->NameSize   = NameSize;
+      SetVariableStatus->DataSize   = VariableSize;
+      SetVariableStatus->SetStatus  = Status;
+      SetVariableStatus->Attributes = EFI_VARIABLE_BOOTSERVICE_ACCESS | EFI_VARIABLE_RUNTIME_ACCESS;
+      CopyMem (SetVariableStatus + 1,                          VariableName, NameSize);
+      CopyMem (((UINT8 *) (SetVariableStatus + 1)) + NameSize, Variable,     VariableSize);
+
+      REPORT_STATUS_CODE_EX (
+        EFI_ERROR_CODE,
+        PcdGet32 (PcdErrorCodeSetVariable),
+        0,
+        NULL,
+        &gEdkiiStatusCodeDataTypeVariableGuid,
+        SetVariableStatus,
+        sizeof (EDKII_SET_VARIABLE_STATUS) + NameSize + VariableSize
+        );
+
+      FreePool (SetVariableStatus);
+    }
+  }
+
   FreePool (Variable);
 
   return ;
@@ -1525,7 +1567,7 @@ TerminalRemoveConsoleDevVariable (
     // Loop through all the terminal types that this driver supports
     //
     Match = FALSE;
-    for (TerminalType = PCANSITYPE; TerminalType <= VTUTF8TYPE; TerminalType++) {
+    for (TerminalType = PCANSITYPE; TerminalType <= TTYTERMTYPE; TerminalType++) {
 
       SetTerminalDevicePath (TerminalType, ParentDevicePath, &TempDevicePath);
 
@@ -1570,6 +1612,9 @@ TerminalRemoveConsoleDevVariable (
                     VariableSize,
                     NewVariable
                     );
+    //
+    // Shrinking variable with existing variable driver implementation shouldn't fail.
+    //
     ASSERT_EFI_ERROR (Status);
   }
 
@@ -1624,6 +1669,10 @@ SetTerminalDevicePath (
 
   case VTUTF8TYPE:
     CopyGuid (&Node.Guid, &gEfiVTUTF8Guid);
+    break;
+
+  case TTYTERMTYPE:
+    CopyGuid (&Node.Guid, &gEfiTtyTermGuid);
     break;
 
   default:

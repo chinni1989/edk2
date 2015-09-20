@@ -1,5 +1,5 @@
 //
-//  Copyright (c) 2011-2014, ARM Limited. All rights reserved.
+//  Copyright (c) 2011-2015, ARM Limited. All rights reserved.
 //
 //  This program and the accompanying materials
 //  are licensed and made available under the terms and conditions of the BSD License
@@ -19,19 +19,21 @@
 #include <Chipset/ArmV7.h>
 
   INCLUDE AsmMacroIoLib.inc
-  
+
   IMPORT  CEntryPoint
   IMPORT  ArmPlatformIsPrimaryCore
   IMPORT  ArmReadMpidr
   IMPORT  ArmPlatformPeiBootAction
   IMPORT  ArmPlatformStackSet
-  
+
   EXPORT  _ModuleEntryPoint
+  EXPORT  mSystemMemoryEnd
 
   PRESERVE8
   AREA    PrePiCoreEntryPoint, CODE, READONLY
-  
+
 StartupAddr        DCD      CEntryPoint
+mSystemMemoryEnd   DCQ      0
 
 _ModuleEntryPoint
   // Do early platform specific actions
@@ -50,12 +52,23 @@ _SetSVCMode
 // Check if we can install the stack at the top of the System Memory or if we need
 // to install the stacks at the bottom of the Firmware Device (case the FD is located
 // at the top of the DRAM)
-_SetupStackPosition
-  // Compute Top of System Memory
-  LoadConstantToReg (FixedPcdGet64 (PcdSystemMemoryBase), r1)
-  LoadConstantToReg (FixedPcdGet64 (PcdSystemMemorySize), r2)
+_SystemMemoryEndInit
+  ldr   r1, mSystemMemoryEnd
+
+  // Is mSystemMemoryEnd initialized?
+  cmp   r1, #0
+  bne   _SetupStackPosition
+
+  LoadConstantToReg (FixedPcdGet32(PcdSystemMemoryBase), r1)
+  LoadConstantToReg (FixedPcdGet32(PcdSystemMemorySize), r2)
   sub   r2, r2, #1
-  add   r1, r1, r2      // r1 = SystemMemoryTop = PcdSystemMemoryBase + PcdSystemMemorySize
+  add   r1, r1, r2
+  // Update the global variable
+  adr   r2, mSystemMemoryEnd
+  str   r1, [r2]
+
+_SetupStackPosition
+  // r1 = SystemMemoryTop
 
   // Calculate Top of the Firmware Device
   LoadConstantToReg (FixedPcdGet32(PcdFdBaseAddress), r2)
@@ -71,13 +84,13 @@ _SetupStackPosition
   //
 
   // Calculate how much space there is between the top of the Firmware and the Top of the System Memory
-  subs	r0, r1, r3	// r0 = SystemMemoryTop - FdTop
-  bmi	_SetupStack	// Jump if negative (FdTop > SystemMemoryTop). Case when the PrePi is in XIP memory outside of the DRAM
-  cmp	r0, r4
-  bge	_SetupStack
+  subs  r0, r1, r3      // r0 = SystemMemoryTop - FdTop
+  bmi   _SetupStack     // Jump if negative (FdTop > SystemMemoryTop). Case when the PrePi is in XIP memory outside of the DRAM
+  cmp   r0, r4
+  bge   _SetupStack
 
   // Case the top of stacks is the FdBaseAddress
-  mov	r1, r2
+  mov   r1, r2
 
 _SetupStack
   // r1 contains the top of the stack (and the UEFI Memory)
@@ -111,18 +124,18 @@ _GetStackBase
 
   // Stack for the secondary core = Number of Cores - 1
   LoadConstantToReg (FixedPcdGet32(PcdCoreCount), r0)
-  sub	r0, r0, #1
+  sub   r0, r0, #1
   LoadConstantToReg (FixedPcdGet32(PcdCPUCoreSecondaryStackSize), r1)
   mul   r1, r1, r0
   sub   r10, r10, r1
 
   // r10 = The base of the MpCore Stacks (primary stack & secondary stacks)
-  mov	r0, r10
-  mov	r1, r8
+  mov   r0, r10
+  mov   r1, r8
   //ArmPlatformStackSet(StackBase, MpId, PrimaryStackSize, SecondaryStackSize)
   LoadConstantToReg (FixedPcdGet32(PcdCPUCorePrimaryStackSize), r2)
   LoadConstantToReg (FixedPcdGet32(PcdCPUCoreSecondaryStackSize), r3)
-  bl	ArmPlatformStackSet
+  bl    ArmPlatformStackSet
 
   // Is it the Primary Core ?
   mov   r0, r8

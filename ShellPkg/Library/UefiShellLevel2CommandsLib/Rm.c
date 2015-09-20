@@ -1,7 +1,8 @@
 /** @file
   Main file for attrib shell level 2 function.
 
-  Copyright (c) 2009 - 2013, Intel Corporation. All rights reserved.<BR>
+  (C) Copyright 2015 Hewlett-Packard Development Company, L.P.<BR>
+  Copyright (c) 2009 - 2015, Intel Corporation. All rights reserved.<BR>
   This program and the accompanying materials
   are licensed and made available under the terms and conditions of the BSD License
   which accompanies this distribution.  The full text of the license may be found at
@@ -39,6 +40,7 @@ IsDirectoryEmpty (
 
   RetVal = TRUE;
   NoFile = FALSE;
+  FileInfo = NULL;
 
   for (FileHandleFindFirstFile(FileHandle, &FileInfo)
     ;  !NoFile
@@ -76,6 +78,7 @@ CascadeDelete(
   EFI_STATUS            Status;
   SHELL_PROMPT_RESPONSE *Resp;
   CHAR16                *TempName;
+  UINTN                 NewSize;
 
   Resp                  = NULL;
   ShellStatus           = SHELL_SUCCESS;
@@ -83,7 +86,7 @@ CascadeDelete(
   Status                = EFI_SUCCESS;
 
   if ((Node->Info->Attribute & EFI_FILE_READ_ONLY) == EFI_FILE_READ_ONLY) {
-    ShellPrintHiiEx(-1, -1, NULL, STRING_TOKEN (STR_RM_LOG_DETELE_RO), gShellLevel2HiiHandle, Node->FullName);
+    ShellPrintHiiEx(-1, -1, NULL, STRING_TOKEN (STR_RM_LOG_DETELE_RO), gShellLevel2HiiHandle, L"rm", Node->FullName);  
     return (SHELL_ACCESS_DENIED);
   }
 
@@ -124,13 +127,14 @@ CascadeDelete(
           //
           // Update the node filename to have full path with file system identifier
           //
-          TempName = AllocateZeroPool(StrSize(Node->FullName) + StrSize(Node2->FullName));
+          NewSize = StrSize(Node->FullName) + StrSize(Node2->FullName);
+          TempName = AllocateZeroPool(NewSize);
           if (TempName == NULL) {
             ShellStatus = SHELL_OUT_OF_RESOURCES;
           } else {
-            StrCpy(TempName, Node->FullName);
+            StrCpyS(TempName, NewSize/sizeof(CHAR16), Node->FullName);
             TempName[StrStr(TempName, L":")+1-TempName] = CHAR_NULL;
-            StrCat(TempName, Node2->FullName);
+            StrCatS(TempName, NewSize/sizeof(CHAR16), Node2->FullName);
             FreePool((VOID*)Node2->FullName);
             Node2->FullName = TempName;
 
@@ -162,7 +166,9 @@ CascadeDelete(
     //
     // now delete the current node...
     //
-    ShellPrintHiiEx(-1, -1, NULL, STRING_TOKEN (STR_RM_LOG_DELETE), gShellLevel2HiiHandle, Node->FullName);
+    if (!Quiet) {
+      ShellPrintHiiEx(-1, -1, NULL, STRING_TOKEN (STR_RM_LOG_DELETE), gShellLevel2HiiHandle, Node->FullName);
+    }
     Status = gEfiShellProtocol->DeleteFile(Node->Handle);
     Node->Handle = NULL;
   }
@@ -174,13 +180,15 @@ CascadeDelete(
     ShellPrintHiiEx(-1, -1, NULL, STRING_TOKEN (STR_RM_LOG_DELETE_ERR), gShellLevel2HiiHandle, Status);
     return (SHELL_ACCESS_DENIED);
   } else {
-    ShellPrintHiiEx(-1, -1, NULL, STRING_TOKEN (STR_RM_LOG_DELETE_COMP), gShellLevel2HiiHandle);
+    if (!Quiet) {
+      ShellPrintHiiEx(-1, -1, NULL, STRING_TOKEN (STR_RM_LOG_DELETE_COMP), gShellLevel2HiiHandle);
+    }
     return (SHELL_SUCCESS);
   }
 }
 
 /**
-  Determins if a Node is a valid delete target.  Will prevent deleting the root directory.
+  Determines if a Node is a valid delete target.  Will prevent deleting the root directory.
 
   @param[in] List       RESERVED.  Not used.
   @param[in] Node       The node to analyze.
@@ -284,7 +292,7 @@ ShellCommandRunRm (
   Status = ShellCommandLineParse (ParamList, &Package, &ProblemParam, TRUE);
   if (EFI_ERROR(Status)) {
     if (Status == EFI_VOLUME_CORRUPTED && ProblemParam != NULL) {
-      ShellPrintHiiEx(-1, -1, NULL, STRING_TOKEN (STR_GEN_PROBLEM), gShellLevel2HiiHandle, ProblemParam);
+      ShellPrintHiiEx(-1, -1, NULL, STRING_TOKEN (STR_GEN_PROBLEM), gShellLevel2HiiHandle, L"rm", ProblemParam);  
       FreePool(ProblemParam);
       ShellStatus = SHELL_INVALID_PARAMETER;
     } else {
@@ -301,7 +309,7 @@ ShellCommandRunRm (
       //
       // we insufficient parameters
       //
-      ShellPrintHiiEx(-1, -1, NULL, STRING_TOKEN (STR_GEN_TOO_FEW), gShellLevel2HiiHandle);
+      ShellPrintHiiEx(-1, -1, NULL, STRING_TOKEN (STR_GEN_TOO_FEW), gShellLevel2HiiHandle, L"rm");  
       ShellStatus = SHELL_INVALID_PARAMETER;
     } else {
       //
@@ -314,7 +322,7 @@ ShellCommandRunRm (
          ){
         Status = ShellOpenFileMetaArg((CHAR16*)Param, EFI_FILE_MODE_WRITE|EFI_FILE_MODE_READ, &FileList);
         if (EFI_ERROR(Status) || FileList == NULL || IsListEmpty(&FileList->Link)) {
-          ShellPrintHiiEx(-1, -1, NULL, STRING_TOKEN (STR_GEN_FILE_NF), gShellLevel2HiiHandle, (CHAR16*)Param);
+          ShellPrintHiiEx(-1, -1, NULL, STRING_TOKEN (STR_GEN_FILE_NF), gShellLevel2HiiHandle, L"rm", (CHAR16*)Param);  
           ShellStatus = SHELL_NOT_FOUND;
           break;
         }

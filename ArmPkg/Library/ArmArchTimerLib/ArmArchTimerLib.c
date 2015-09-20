@@ -1,8 +1,8 @@
 /** @file
   Generic ARM implementation of TimerLib.h
 
-  Copyright (c) 2011-2013, ARM Limited. All rights reserved.
-  
+  Copyright (c) 2011-2014, ARM Limited. All rights reserved.
+
   This program and the accompanying materials
   are licensed and made available under the terms and conditions of the BSD License
   which accompanies this distribution.  The full text of the license may be found at
@@ -20,7 +20,7 @@
 #include <Library/TimerLib.h>
 #include <Library/DebugLib.h>
 #include <Library/PcdLib.h>
-#include <Library/ArmArchTimerLib.h>
+#include <Library/ArmGenericTimerCounterLib.h>
 
 #define TICKS_PER_MICRO_SEC     (PcdGet32 (PcdArmArchTimerFreqInHz)/1000000U)
 
@@ -30,32 +30,44 @@ TimerConstructor (
   VOID
   )
 {
-  // Check if the ARM Generic Timer Extension is implemented
+  //
+  // Check if the ARM Generic Timer Extension is implemented.
+  //
   if (ArmIsArchTimerImplemented ()) {
-
     UINTN TimerFreq;
 
-    // Check if Architectural Timer frequency is valid number (should not be 0)
-    ASSERT (PcdGet32 (PcdArmArchTimerFreqInHz));
-
-    // Check if ticks/uS is not 0. The Architectural timer runs at constant
-    // frequency irrespective of CPU frequency. According to General Timer Ref
-    // manual lower bound of the frequency is in the range of 1-10MHz
-    ASSERT (TICKS_PER_MICRO_SEC);
+    //
+    // Check if Architectural Timer frequency is pre-determined by the platform
+    // (ie. nonzero).
+    //
+    if (PcdGet32 (PcdArmArchTimerFreqInHz) != 0) {
+      //
+      // Check if ticks/uS is not 0. The Architectural timer runs at constant
+      // frequency, irrespective of CPU frequency. According to General Timer
+      // Ref manual, lower bound of the frequency is in the range of 1-10MHz.
+      //
+      ASSERT (TICKS_PER_MICRO_SEC);
 
 #ifdef MDE_CPU_ARM
-    // Only set the frequency for ARMv7. We expect the secure firmware to have already do it
-    // If the security extensions are not implemented set Timer Frequency
-    if ((ArmReadIdPfr1 () & 0xF0) == 0x0) {
-      ArmArchTimerSetTimerFreq (PcdGet32 (PcdArmArchTimerFreqInHz));
-    }
+      //
+      // Only set the frequency for ARMv7. We expect the secure firmware to
+      // have already done it.
+      // If the security extension is not implemented, set Timer Frequency
+      // here.
+      //
+      if ((ArmReadIdPfr1 () & ARM_PFR1_SEC) == 0x0) {
+        ArmGenericTimerSetTimerFreq (PcdGet32 (PcdArmArchTimerFreqInHz));
+      }
 #endif
+    }
 
-    // Architectural Timer Frequency must be set in the Secure privileged(if secure extensions are supported) mode.
-    // If the reset value (0) is returned just ASSERT.
-    TimerFreq = ArmArchTimerGetTimerFreq ();
+    //
+    // Architectural Timer Frequency must be set in the Secure privileged
+    // mode (if secure extension is supported).
+    // If the reset value (0) is returned, just ASSERT.
+    //
+    TimerFreq = ArmGenericTimerGetTimerFreq ();
     ASSERT (TimerFreq != 0);
-
   } else {
     DEBUG ((EFI_D_ERROR, "ARM Architectural Timer is not available in the CPU, hence this library can not be used.\n"));
     ASSERT (0);
@@ -81,18 +93,43 @@ MicroSecondDelay (
 {
   UINT64 TimerTicks64;
   UINT64 SystemCounterVal;
+  UINT64 (EFIAPI
+          *MultU64xN) (
+            IN UINT64 Multiplicand,
+            IN UINTN  Multiplier
+            );
+  UINTN TimerFreq;
 
-  // Calculate counter ticks that can represent requested delay
-  TimerTicks64 = MultU64x32 (MicroSeconds, TICKS_PER_MICRO_SEC);
+#ifdef MDE_CPU_ARM
+  MultU64xN = MultU64x32;
+#else
+  MultU64xN = MultU64x64;
+#endif
+
+  TimerFreq = PcdGet32 (PcdArmArchTimerFreqInHz);
+  if (TimerFreq == 0) {
+    TimerFreq = ArmGenericTimerGetTimerFreq ();
+  }
+
+  // Calculate counter ticks that can represent requested delay:
+  //  = MicroSeconds x TICKS_PER_MICRO_SEC
+  //  = MicroSeconds x Frequency.10^-6
+  TimerTicks64 = DivU64x32 (
+                   MultU64xN (
+                     MicroSeconds,
+                     TimerFreq
+                     ),
+                   1000000U
+                   );
 
   // Read System Counter value
-  SystemCounterVal = ArmArchTimerGetSystemCount ();
+  SystemCounterVal = ArmGenericTimerGetSystemCount ();
 
   TimerTicks64 += SystemCounterVal;
 
   // Wait until delay count is expired.
   while (SystemCounterVal < TimerTicks64) {
-    SystemCounterVal = ArmArchTimerGetSystemCount ();
+    SystemCounterVal = ArmGenericTimerGetSystemCount ();
   }
 
   return MicroSeconds;
@@ -147,7 +184,7 @@ GetPerformanceCounter (
   )
 {
   // Just return the value of system count
-  return ArmArchTimerGetSystemCount ();
+  return ArmGenericTimerGetSystemCount ();
 }
 
 /**
@@ -190,5 +227,5 @@ GetPerformanceCounterProperties (
     *EndValue = 0xFFFFFFFFFFFFFFFFUL;
   }
 
-  return (UINT64)ArmArchTimerGetTimerFreq ();
+  return (UINT64)ArmGenericTimerGetTimerFreq ();
 }

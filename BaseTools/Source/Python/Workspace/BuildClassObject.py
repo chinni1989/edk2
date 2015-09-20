@@ -1,7 +1,7 @@
 ## @file
 # This file is used to define each component of the build database
 #
-# Copyright (c) 2007 - 2010, Intel Corporation. All rights reserved.<BR>
+# Copyright (c) 2007 - 2015, Intel Corporation. All rights reserved.<BR>
 # This program and the accompanying materials
 # are licensed and made available under the terms and conditions of the BSD License
 # which accompanies this distribution.  The full text of the license may be found at
@@ -11,7 +11,7 @@
 # WITHOUT WARRANTIES OR REPRESENTATIONS OF ANY KIND, EITHER EXPRESS OR IMPLIED.
 #
 
-import os
+import Common.LongFilePathOs as os
 
 from Common.Misc import sdict
 from Common.Misc import RealPath2
@@ -44,7 +44,7 @@ from Common.BuildToolError import *
 # @var Phase:                To store value for Phase, default is "DXE"
 #
 class PcdClassObject(object):
-    def __init__(self, Name = None, Guid = None, Type = None, DatumType = None, Value = None, Token = None, MaxDatumSize = None, SkuInfoList = {}, IsOverrided = False, GuidValue = None):
+    def __init__(self, Name = None, Guid = None, Type = None, DatumType = None, Value = None, Token = None, MaxDatumSize = None, SkuInfoList = {}, IsOverrided = False, GuidValue = None, validateranges = [], validlists = [], expressions = []):
         self.TokenCName = Name
         self.TokenSpaceGuidCName = Guid
         self.TokenSpaceGuidValue = GuidValue
@@ -57,6 +57,11 @@ class PcdClassObject(object):
         self.Phase = "DXE"
         self.Pending = False
         self.IsOverrided = IsOverrided
+        self.IsFromBinaryInf = False
+        self.IsFromDsc = False
+        self.validateranges = validateranges
+        self.validlists = validlists
+        self.expressions = expressions
         
     ## Convert the class to a string
     #

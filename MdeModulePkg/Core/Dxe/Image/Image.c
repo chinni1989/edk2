@@ -1,7 +1,7 @@
 /** @file
   Core image handling services to load and unload PeImage.
 
-Copyright (c) 2006 - 2012, Intel Corporation. All rights reserved.<BR>
+Copyright (c) 2006 - 2015, Intel Corporation. All rights reserved.<BR>
 This program and the accompanying materials
 are licensed and made available under the terms and conditions of the BSD License
 which accompanies this distribution.  The full text of the license may be found at
@@ -710,6 +710,7 @@ CoreLoadPeImage (
       Image->RuntimeData->RelocationData = Image->ImageContext.FixupData;
       Image->RuntimeData->Handle         = Image->Handle;
       InsertTailList (&gRuntime->ImageHead, &Image->RuntimeData->Link);
+      InsertImageRecord (Image->RuntimeData);
     }
   }
 
@@ -854,6 +855,13 @@ CoreUnloadAndCloseImage (
   UINTN                               OpenInfoCount;
   UINTN                               OpenInfoIndex;
 
+  HandleBuffer = NULL;
+  ProtocolGuidArray = NULL;
+
+  if (Image->Started) {
+    UnregisterMemoryProfileImage (Image);
+  }
+
   if (Image->Ebc != NULL) {
     //
     // If EBC protocol exists we must perform cleanups for this image.
@@ -949,6 +957,7 @@ CoreUnloadAndCloseImage (
       // Remove the Image from the Runtime Image list as we are about to Free it!
       //
       RemoveEntryList (&Image->RuntimeData->Link);
+      RemoveImageRecord (Image->RuntimeData);
     }
     CoreFreePool (Image->RuntimeData);
   }
@@ -1046,8 +1055,11 @@ CoreLoadImageCommon (
   UINT32                     AuthenticationStatus;
   EFI_DEVICE_PATH_PROTOCOL   *OriginalFilePath;
   EFI_DEVICE_PATH_PROTOCOL   *HandleFilePath;
+  EFI_DEVICE_PATH_PROTOCOL   *InputFilePath;
+  EFI_DEVICE_PATH_PROTOCOL   *Node;
   UINTN                      FilePathSize;
   BOOLEAN                    ImageIsFromFv;
+  BOOLEAN                    ImageIsFromLoadFile;
 
   SecurityStatus = EFI_SUCCESS;
 
@@ -1070,11 +1082,13 @@ CoreLoadImageCommon (
   ZeroMem (&FHand, sizeof (IMAGE_FILE_HANDLE));
   FHand.Signature  = IMAGE_FILE_HANDLE_SIGNATURE;
   OriginalFilePath = FilePath;
+  InputFilePath    = FilePath;
   HandleFilePath   = FilePath;
   DeviceHandle     = NULL;
   Status           = EFI_SUCCESS;
   AuthenticationStatus = 0;
-  ImageIsFromFv    = FALSE;
+  ImageIsFromFv        = FALSE;
+  ImageIsFromLoadFile  = FALSE;
 
   //
   // If the caller passed a copy of the file, then just use it
@@ -1095,6 +1109,33 @@ CoreLoadImageCommon (
     if (FilePath == NULL) {
       return EFI_INVALID_PARAMETER;
     }
+
+    //
+    // Try to get the image device handle by checking the match protocol.
+    //
+    Node   = NULL;
+    Status = CoreLocateDevicePath (&gEfiFirmwareVolume2ProtocolGuid, &HandleFilePath, &DeviceHandle);
+    if (!EFI_ERROR (Status)) {
+      ImageIsFromFv = TRUE;
+    } else {
+      HandleFilePath = FilePath;
+      Status = CoreLocateDevicePath (&gEfiSimpleFileSystemProtocolGuid, &HandleFilePath, &DeviceHandle);
+      if (EFI_ERROR (Status)) {
+        if (!BootPolicy) {
+          HandleFilePath = FilePath;
+          Status = CoreLocateDevicePath (&gEfiLoadFile2ProtocolGuid, &HandleFilePath, &DeviceHandle);
+        }
+        if (EFI_ERROR (Status)) {
+          HandleFilePath = FilePath;
+          Status = CoreLocateDevicePath (&gEfiLoadFileProtocolGuid, &HandleFilePath, &DeviceHandle);
+          if (!EFI_ERROR (Status)) {
+            ImageIsFromLoadFile = TRUE;
+            Node = HandleFilePath;
+          }
+        }
+      }
+    }
+
     //
     // Get the source file buffer by its device path.
     //
@@ -1107,26 +1148,12 @@ CoreLoadImageCommon (
     if (FHand.Source == NULL) {
       Status = EFI_NOT_FOUND;
     } else {
-      //
-      // Try to get the image device handle by checking the match protocol.
-      //
       FHand.FreeBuffer = TRUE;
-      Status = CoreLocateDevicePath (&gEfiFirmwareVolume2ProtocolGuid, &HandleFilePath, &DeviceHandle);
-      if (!EFI_ERROR (Status)) {
-        ImageIsFromFv = TRUE;
-      } else {
-        HandleFilePath = FilePath;
-        Status = CoreLocateDevicePath (&gEfiSimpleFileSystemProtocolGuid, &HandleFilePath, &DeviceHandle);
-        if (EFI_ERROR (Status)) {
-          if (!BootPolicy) {
-            HandleFilePath = FilePath;
-            Status = CoreLocateDevicePath (&gEfiLoadFile2ProtocolGuid, &HandleFilePath, &DeviceHandle);
-          }
-          if (EFI_ERROR (Status)) {
-            HandleFilePath = FilePath;
-            Status = CoreLocateDevicePath (&gEfiLoadFileProtocolGuid, &HandleFilePath, &DeviceHandle);
-          }
-        }
+      if (ImageIsFromLoadFile) {
+        //
+        // LoadFile () may cause the device path of the Handle be updated.
+        //
+        OriginalFilePath = AppendDevicePath (DevicePathFromHandle (DeviceHandle), Node);
       }
     }
   }
@@ -1327,6 +1354,9 @@ Done:
   //
   if (FHand.FreeBuffer) {
     CoreFreePool (FHand.Source);
+  }
+  if (OriginalFilePath != InputFilePath) {
+    CoreFreePool (OriginalFilePath);
   }
 
   //
@@ -1623,6 +1653,7 @@ CoreStartImage (
   // Subsequent calls to LongJump() cause a non-zero value to be returned by SetJump().
   //
   if (SetJumpFlag == 0) {
+    RegisterMemoryProfileImage (Image, (Image->ImageContext.ImageType == EFI_IMAGE_SUBSYSTEM_EFI_APPLICATION ? EFI_FV_FILETYPE_APPLICATION : EFI_FV_FILETYPE_DRIVER));
     //
     // Call the image's entry point
     //

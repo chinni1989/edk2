@@ -4,7 +4,7 @@
   Note that if the debug message length is larger than the maximum allowable
   record length, then the debug message will be ignored directly.
 
-  Copyright (c) 2006 - 2012, Intel Corporation. All rights reserved.<BR>
+  Copyright (c) 2006 - 2015, Intel Corporation. All rights reserved.<BR>
   This program and the accompanying materials
   are licensed and made available under the terms and conditions of the BSD License
   which accompanies this distribution.  The full text of the license may be found at
@@ -15,7 +15,7 @@
 
 **/
 
-#include <FrameworkPei.h>
+#include <PiPei.h>
 
 #include <Guid/StatusCodeDataTypeId.h>
 #include <Guid/StatusCodeDataTypeDebug.h>
@@ -56,6 +56,7 @@ DebugPrint (
   UINT64          Buffer[(EFI_STATUS_CODE_DATA_MAX_SIZE / sizeof (UINT64)) + 1];
   EFI_DEBUG_INFO  *DebugInfo;
   UINTN           TotalSize;
+  UINTN           DestBufferSize;
   VA_LIST         VaListMarker;
   BASE_LIST       BaseListMarker;
   CHAR8           *FormatString;
@@ -115,7 +116,13 @@ DebugPrint (
   //
   // Copy the Format string into the record
   //
-  AsciiStrCpy (FormatString, Format);
+  // According to the content structure of Buffer shown above, the size of
+  // the FormatString buffer is the size of Buffer minus the Padding
+  // (4 bytes), minus the size of EFI_DEBUG_INFO, minus the size of
+  // variable arguments (12 * sizeof (UINT64)).
+  //
+  DestBufferSize = sizeof (Buffer) - 4 - sizeof (EFI_DEBUG_INFO) - 12 * sizeof (UINT64);
+  AsciiStrCpyS (FormatString, DestBufferSize / sizeof (CHAR8), Format);
 
   //
   // The first 12 * sizeof (UINT64) bytes following EFI_DEBUG_INFO are for variable arguments
@@ -182,7 +189,7 @@ DebugPrint (
     if ((*Format == 'p') && (sizeof (VOID *) > 4)) {
       Long = TRUE;
     }
-    if (*Format == 'p' || *Format == 'X' || *Format == 'x' || *Format == 'd') {
+    if (*Format == 'p' || *Format == 'X' || *Format == 'x' || *Format == 'd' || *Format == 'u') {
       if (Long) {
         BASE_ARG (BaseListMarker, INT64) = VA_ARG (VaListMarker, INT64);
       } else {
@@ -440,4 +447,22 @@ DebugClearMemoryEnabled (
   )
 {
   return (BOOLEAN) ((PcdGet8 (PcdDebugPropertyMask) & DEBUG_PROPERTY_CLEAR_MEMORY_ENABLED) != 0);
+}
+
+/**
+  Returns TRUE if any one of the bit is set both in ErrorLevel and PcdFixedDebugPrintErrorLevel.
+
+  This function compares the bit mask of ErrorLevel and PcdFixedDebugPrintErrorLevel.
+
+  @retval  TRUE    Current ErrorLevel is supported.
+  @retval  FALSE   Current ErrorLevel is not supported.
+
+**/
+BOOLEAN
+EFIAPI
+DebugPrintLevelEnabled (
+  IN  CONST UINTN        ErrorLevel
+  )
+{
+  return (BOOLEAN) ((ErrorLevel & PcdGet32(PcdFixedDebugPrintErrorLevel)) != 0);
 }

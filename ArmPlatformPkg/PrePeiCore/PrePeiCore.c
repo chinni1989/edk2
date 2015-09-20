@@ -1,7 +1,7 @@
 /** @file
 *  Main file supporting the transition to PEI Core in Normal World for Versatile Express
 *
-*  Copyright (c) 2011-2013, ARM Limited. All rights reserved.
+*  Copyright (c) 2011-2014, ARM Limited. All rights reserved.
 *
 *  This program and the accompanying materials
 *  are licensed and made available under the terms and conditions of the BSD License
@@ -21,19 +21,19 @@
 
 #include "PrePeiCore.h"
 
-EFI_PEI_TEMPORARY_RAM_SUPPORT_PPI   mTemporaryRamSupportPpi = { PrePeiCoreTemporaryRamSupport };
-ARM_GLOBAL_VARIABLE_PPI             mGlobalVariablePpi = { PrePeiCoreGetGlobalVariableMemory };
+CONST EFI_PEI_TEMPORARY_RAM_SUPPORT_PPI   mTemporaryRamSupportPpi = { PrePeiCoreTemporaryRamSupport };
+CONST ARM_GLOBAL_VARIABLE_PPI             mGlobalVariablePpi = { PrePeiCoreGetGlobalVariableMemory };
 
-EFI_PEI_PPI_DESCRIPTOR      gCommonPpiTable[] = {
+CONST EFI_PEI_PPI_DESCRIPTOR      gCommonPpiTable[] = {
   {
     EFI_PEI_PPI_DESCRIPTOR_PPI,
     &gEfiTemporaryRamSupportPpiGuid,
-    &mTemporaryRamSupportPpi
+    (VOID *) &mTemporaryRamSupportPpi
   },
   {
     EFI_PEI_PPI_DESCRIPTOR_PPI,
     &gArmGlobalVariablePpiGuid,
-    &mGlobalVariablePpi
+    (VOID *) &mGlobalVariablePpi
   }
 };
 
@@ -53,7 +53,7 @@ CreatePpiList (
   ArmPlatformGetPlatformPpiList (&PlatformPpiListSize, &PlatformPpiList);
 
   // Copy the Common and Platform PPis in Temporrary Memory
-  ListBase = PcdGet32 (PcdCPUCoresStackBase);
+  ListBase = PcdGet64 (PcdCPUCoresStackBase);
   CopyMem ((VOID*)ListBase, gCommonPpiTable, sizeof(gCommonPpiTable));
   CopyMem ((VOID*)(ListBase + sizeof(gCommonPpiTable)), PlatformPpiList, PlatformPpiListSize);
 
@@ -86,8 +86,9 @@ CEntryPoint (
   //
 
   // Write VBAR - The Exception Vector table must be aligned to its requirement
-  //TODO: Fix baseTools to ensure the Exception Vector Table is correctly aligned in AArch64
-  //ASSERT(((UINTN)PeiVectorTable & ARM_VECTOR_TABLE_ALIGNMENT) == 0);
+  // Note: The AArch64 Vector table must be 2k-byte aligned - if this assertion fails ensure
+  // 'Align=4K' is defined into your FDF for this module.
+  ASSERT (((UINTN)PeiVectorTable & ARM_VECTOR_TABLE_ALIGNMENT) == 0);
   ArmWriteVBar ((UINTN)PeiVectorTable);
 
   //Note: The MMU will be enabled by MemoryPeim. Only the primary core will have the MMU on.
@@ -140,7 +141,7 @@ PrePeiCoreTemporaryRamSupport (
   // Migrate the temporary memory heap to permanent memory heap.
   //
   CopyMem (NewHeap, OldHeap, CopySize >> 1);
-  
+
   SecSwitchStack ((UINTN)NewStack - (UINTN)OldStack);
 
   return EFI_SUCCESS;
@@ -153,7 +154,7 @@ PrePeiCoreGetGlobalVariableMemory (
 {
   ASSERT (GlobalVariableBase != NULL);
 
-  *GlobalVariableBase = (UINTN)PcdGet32 (PcdCPUCoresStackBase) +
+  *GlobalVariableBase = (UINTN)PcdGet64 (PcdCPUCoresStackBase) +
                         (UINTN)PcdGet32 (PcdCPUCorePrimaryStackSize) -
                         (UINTN)PcdGet32 (PcdPeiGlobalVariableSize);
 

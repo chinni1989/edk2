@@ -1,7 +1,7 @@
 /** @file
   EFI DHCP protocol implementation.
   
-Copyright (c) 2006 - 2012, Intel Corporation. All rights reserved.<BR>
+Copyright (c) 2006 - 2014, Intel Corporation. All rights reserved.<BR>
 This program and the accompanying materials
 are licensed and made available under the terms and conditions of the BSD License
 which accompanies this distribution.  The full text of the license may be found at
@@ -404,6 +404,7 @@ DhcpLeaseAcquired (
 
   if (DhcpSb->Netmask == 0) {
     Class           = NetGetIpClass (DhcpSb->ClientAddr);
+    ASSERT (Class < IP4_ADDR_CLASSE);
     DhcpSb->Netmask = gIp4AllMasks[Class << 3];
   }
 
@@ -1517,6 +1518,8 @@ DhcpOnTimerTick (
   IN VOID                   *Context
   )
 {
+  LIST_ENTRY                *Entry;
+  LIST_ENTRY                *Next;
   DHCP_SERVICE              *DhcpSb;
   DHCP_PROTOCOL             *Instance;
   EFI_STATUS                Status;
@@ -1664,10 +1667,17 @@ DhcpOnTimerTick (
   }
 
 ON_EXIT:
-  if ((Instance != NULL) && (Instance->Token != NULL)) {
-    Instance->Timeout--;
-    if (Instance->Timeout == 0) {
-      PxeDhcpDone (Instance);
+  //
+  // Iterate through all the DhcpSb Children.
+  //
+  NET_LIST_FOR_EACH_SAFE (Entry, Next, &DhcpSb->Children) {
+    Instance = NET_LIST_USER_STRUCT (Entry, DHCP_PROTOCOL, Link);
+    
+    if ((Instance != NULL) && (Instance->Token != NULL)) {
+      Instance->Timeout--;
+      if (Instance->Timeout == 0) {
+        PxeDhcpDone (Instance);
+      }
     }
   }
 

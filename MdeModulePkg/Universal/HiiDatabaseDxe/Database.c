@@ -1,7 +1,7 @@
 /** @file
 Implementation for EFI_HII_DATABASE_PROTOCOL.
 
-Copyright (c) 2007 - 2011, Intel Corporation. All rights reserved.<BR>
+Copyright (c) 2007 - 2015, Intel Corporation. All rights reserved.<BR>
 This program and the accompanying materials
 are licensed and made available under the terms and conditions of the BSD License
 which accompanies this distribution.  The full text of the license may be found at
@@ -798,7 +798,7 @@ InsertStringPackage (
   if (Language == NULL) {
     return EFI_OUT_OF_RESOURCES;
   }
-  AsciiStrCpy (Language, (CHAR8 *) PackageHdr + HeaderSize - LanguageSize);
+  AsciiStrCpyS (Language, LanguageSize / sizeof (CHAR8), (CHAR8 *) PackageHdr + HeaderSize - LanguageSize);
   for (Link = PackageList->StringPkgHdr.ForwardLink; Link != &PackageList->StringPkgHdr; Link = Link->ForwardLink) {
     StringPackage = CR (Link, HII_STRING_PACKAGE_INSTANCE, StringEntry, HII_STRING_PACKAGE_SIGNATURE);
     if (HiiCompareLanguage (Language, StringPackage->StringPkgHdr->Language)) {
@@ -1182,7 +1182,7 @@ InsertFontPackage (
   }
   FontInfo->FontStyle = FontPkgHdr->FontStyle;
   FontInfo->FontSize  = FontPkgHdr->Cell.Height;
-  StrCpy (FontInfo->FontName, FontPkgHdr->FontFamily);
+  StrCpyS (FontInfo->FontName, (FontInfoSize - OFFSET_OF(EFI_FONT_INFO,FontName)) / sizeof (CHAR16), FontPkgHdr->FontFamily);
 
   if (IsFontInfoExisted (Private, FontInfo, NULL, NULL, NULL)) {
     Status = EFI_UNSUPPORTED;
@@ -2417,8 +2417,14 @@ AddPackages (
   //
   // Initialize Variables
   //
-  StringPkgIsAdd = FALSE;
-  FontPackage = NULL;
+  StringPkgIsAdd        = FALSE;
+  FontPackage           = NULL;
+  StringPackage         = NULL;
+  GuidPackage           = NULL;
+  FormPackage           = NULL;
+  ImagePackage          = NULL;
+  SimpleFontPackage     = NULL;
+  KeyboardLayoutPackage = NULL;
 
   //
   // Process the package list header
@@ -2505,6 +2511,7 @@ AddPackages (
       if (EFI_ERROR (Status)) {
         return Status;
       }
+      ASSERT (StringPackage != NULL);
       Status = InvokeRegisteredFunction (
                  Private,
                  NotifyType,

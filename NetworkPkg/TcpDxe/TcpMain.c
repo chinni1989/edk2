@@ -1,7 +1,8 @@
 /** @file
   Implementation of EFI_TCP4_PROTOCOL and EFI_TCP6_PROTOCOL.
 
-  Copyright (c) 2009 - 2011, Intel Corporation. All rights reserved.<BR>
+  (C) Copyright 2014 Hewlett-Packard Development Company, L.P.<BR>
+  Copyright (c) 2009 - 2015, Intel Corporation. All rights reserved.<BR>
 
   This program and the accompanying materials
   are licensed and made available under the terms and conditions of the BSD License

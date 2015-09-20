@@ -1,7 +1,7 @@
 /** @file
   Platform BDS customizations.
 
-  Copyright (c) 2004 - 2013, Intel Corporation. All rights reserved.<BR>
+  Copyright (c) 2004 - 2014, Intel Corporation. All rights reserved.<BR>
   This program and the accompanying materials
   are licensed and made available under the terms and conditions of the BSD License
   which accompanies this distribution.  The full text of the license may be found at
@@ -13,7 +13,7 @@
 **/
 
 #include "BdsPlatform.h"
-#include "QemuBootOrder.h"
+#include <Library/QemuBootOrderLib.h>
 
 
 //
@@ -25,7 +25,20 @@ EFI_EVENT     mEfiDevPathEvent;
 VOID          *mEmuVariableEventReg;
 EFI_EVENT     mEmuVariableEvent;
 BOOLEAN       mDetectVgaOnly;
+UINT16        mHostBridgeDevId;
 
+//
+// Table of host IRQs matching PCI IRQs A-D
+// (for configuring PCI Interrupt Line register)
+//
+CONST UINT8 PciHostIrqs[] = {
+  0x0a, 0x0a, 0x0b, 0x0b
+};
+
+//
+// Array Size macro
+//
+#define ARRAY_SIZE(array) (sizeof (array) / sizeof (array[0]))
 
 //
 // Type definitions
@@ -103,49 +116,27 @@ Returns:
 
 
 EFI_STATUS
+EFIAPI
 ConnectRootBridge (
-  VOID
+  IN EFI_HANDLE  RootBridgeHandle,
+  IN VOID        *Instance,
+  IN VOID        *Context
   )
-/*++
-
-Routine Description:
-
-  Connect RootBridge
-
-Arguments:
-
-  None.
-
-Returns:
-
-  EFI_SUCCESS             - Connect RootBridge successfully.
-  EFI_STATUS              - Connect RootBridge fail.
-
---*/
 {
-  EFI_STATUS                Status;
-  EFI_HANDLE                RootHandle;
+  EFI_STATUS Status;
 
   //
-  // Make all the PCI_IO protocols on PCI Seg 0 show up
+  // Make the PCI bus driver connect the root bridge, non-recursively. This
+  // will produce a number of child handles with PciIo on them.
   //
-  BdsLibConnectDevicePath (gPlatformRootBridges[0]);
-
-  Status = gBS->LocateDevicePath (
-                  &gEfiDevicePathProtocolGuid,
-                  &gPlatformRootBridges[0],
-                  &RootHandle
+  Status = gBS->ConnectController (
+                  RootBridgeHandle, // ControllerHandle
+                  NULL,             // DriverImageHandle
+                  NULL,             // RemainingDevicePath -- produce all
+                                    //   children
+                  FALSE             // Recursive
                   );
-  if (EFI_ERROR (Status)) {
-    return Status;
-  }
-
-  Status = gBS->ConnectController (RootHandle, NULL, NULL, FALSE);
-  if (EFI_ERROR (Status)) {
-    return Status;
-  }
-
-  return EFI_SUCCESS;
+  return Status;
 }
 
 
@@ -367,7 +358,8 @@ Returns:
   EFI_DEVICE_PATH_PROTOCOL  *DevicePath;
   EFI_DEVICE_PATH_PROTOCOL  *GopDevicePath;
 
-  DevicePath = NULL;
+  DevicePath    = NULL;
+  GopDevicePath = NULL;
   Status = gBS->HandleProtocol (
                   DeviceHandle,
                   &gEfiDevicePathProtocolGuid,
@@ -715,64 +707,209 @@ Returns:
 }
 
 
-VOID
-PciInitialization (
+/**
+  Configure PCI Interrupt Line register for applicable devices
+  Ported from SeaBIOS, src/fw/pciinit.c, *_pci_slot_get_irq()
+
+  @param[in]  Handle - Handle of PCI device instance
+  @param[in]  PciIo - PCI IO protocol instance
+  @param[in]  PciHdr - PCI Header register block
+
+  @retval EFI_SUCCESS - PCI Interrupt Line register configured successfully.
+
+**/
+EFI_STATUS
+EFIAPI
+SetPciIntLine (
+  IN EFI_HANDLE           Handle,
+  IN EFI_PCI_IO_PROTOCOL  *PciIo,
+  IN PCI_TYPE00           *PciHdr
   )
 {
-  //
-  // Bus 0, Device 0, Function 0 - Host to PCI Bridge
-  //
-  PciWrite8 (PCI_LIB_ADDRESS (0, 0, 0, 0x3c), 0x00);
+  EFI_DEVICE_PATH_PROTOCOL  *DevPathNode;
+  EFI_DEVICE_PATH_PROTOCOL  *DevPath;
+  UINTN                     RootSlot;
+  UINTN                     Idx;
+  UINT8                     IrqLine;
+  EFI_STATUS                Status;
+  UINT32                    RootBusNumber;
 
-  //
-  // Bus 0, Device 1, Function 0 - PCI to ISA Bridge
-  //
-  PciWrite8 (PCI_LIB_ADDRESS (0, 1, 0, 0x3c), 0x00);
-  PciWrite8 (PCI_LIB_ADDRESS (0, 1, 0, 0x60), 0x0b); // LNKA routing target
-  PciWrite8 (PCI_LIB_ADDRESS (0, 1, 0, 0x61), 0x0b); // LNKB routing target
-  PciWrite8 (PCI_LIB_ADDRESS (0, 1, 0, 0x62), 0x0a); // LNKC routing target
-  PciWrite8 (PCI_LIB_ADDRESS (0, 1, 0, 0x63), 0x0a); // LNKD routing target
+  Status = EFI_SUCCESS;
 
-  //
-  // Bus 0, Device 1, Function 1 - IDE Controller
-  //
-  PciWrite8 (PCI_LIB_ADDRESS (0, 1, 1, 0x3c), 0x00);
-  PciWrite8 (PCI_LIB_ADDRESS (0, 1, 1, 0x0d), 0x40);
+  if (PciHdr->Device.InterruptPin != 0) {
 
-  //
-  // Bus 0, Device 1, Function 3 - Power Managment Controller
-  //
-  PciWrite8 (PCI_LIB_ADDRESS (0, 1, 3, 0x3c), 0x09);
-  PciWrite8 (PCI_LIB_ADDRESS (0, 1, 3, 0x3d), 0x01); // INTA
+    DevPathNode = DevicePathFromHandle (Handle);
+    ASSERT (DevPathNode != NULL);
+    DevPath = DevPathNode;
 
-  //
-  // Bus 0, Device 2, Function 0 - Video Controller
-  //
-  PciWrite8 (PCI_LIB_ADDRESS (0, 2, 0, 0x3c), 0x00);
+    RootBusNumber = 0;
+    if (DevicePathType (DevPathNode) == ACPI_DEVICE_PATH &&
+        DevicePathSubType (DevPathNode) == ACPI_DP &&
+        ((ACPI_HID_DEVICE_PATH *)DevPathNode)->HID == EISA_PNP_ID(0x0A03)) {
+      RootBusNumber = ((ACPI_HID_DEVICE_PATH *)DevPathNode)->UID;
+    }
 
-  //
-  // Bus 0, Device 3, Function 0 - Network Controller
-  //
-  PciWrite8 (PCI_LIB_ADDRESS (0, 3, 0, 0x3c), 0x0a);
-  PciWrite8 (PCI_LIB_ADDRESS (0, 3, 0, 0x3d), 0x01); // INTA (-> LNKC)
+    //
+    // Compute index into PciHostIrqs[] table by walking
+    // the device path and adding up all device numbers
+    //
+    Status = EFI_NOT_FOUND;
+    RootSlot = 0;
+    Idx = PciHdr->Device.InterruptPin - 1;
+    while (!IsDevicePathEnd (DevPathNode)) {
+      if (DevicePathType (DevPathNode) == HARDWARE_DEVICE_PATH &&
+          DevicePathSubType (DevPathNode) == HW_PCI_DP) {
 
-  //
-  // Bus 0, Device 5, Function 0 - RAM Memory
-  //
-  PciWrite8 (PCI_LIB_ADDRESS (0, 5, 0, 0x3c), 0x0b);
-  PciWrite8 (PCI_LIB_ADDRESS (0, 5, 0, 0x3d), 0x01); // INTA (-> LNKA)
+        Idx += ((PCI_DEVICE_PATH *)DevPathNode)->Device;
+
+        //
+        // Unlike SeaBIOS, which starts climbing from the leaf device
+        // up toward the root, we traverse the device path starting at
+        // the root moving toward the leaf node.
+        // The slot number of the top-level parent bridge is needed for
+        // Q35 cases with more than 24 slots on the root bus.
+        //
+        if (Status != EFI_SUCCESS) {
+          Status = EFI_SUCCESS;
+          RootSlot = ((PCI_DEVICE_PATH *)DevPathNode)->Device;
+        }
+      }
+
+      DevPathNode = NextDevicePathNode (DevPathNode);
+    }
+    if (EFI_ERROR (Status)) {
+      return Status;
+    }
+    if (RootBusNumber == 0 && RootSlot == 0) {
+      DEBUG((
+        EFI_D_ERROR,
+        "%a: PCI host bridge (00:00.0) should have no interrupts!\n",
+        __FUNCTION__
+        ));
+      ASSERT (FALSE);
+    }
+
+    //
+    // Final PciHostIrqs[] index calculation depends on the platform
+    // and should match SeaBIOS src/fw/pciinit.c *_pci_slot_get_irq()
+    //
+    switch (mHostBridgeDevId) {
+      case INTEL_82441_DEVICE_ID:
+        Idx -= 1;
+        break;
+      case INTEL_Q35_MCH_DEVICE_ID:
+        //
+        // SeaBIOS contains the following comment:
+        // "Slots 0-24 rotate slot:pin mapping similar to piix above, but
+        //  with a different starting index - see q35-acpi-dsdt.dsl.
+        //
+        //  Slots 25-31 all use LNKA mapping (or LNKE, but A:D = E:H)"
+        //
+        if (RootSlot > 24) {
+          //
+          // in this case, subtract back out RootSlot from Idx
+          // (SeaBIOS never adds it to begin with, but that would make our
+          //  device path traversal loop above too awkward)
+          //
+          Idx -= RootSlot;
+        }
+        break;
+      default:
+        ASSERT (FALSE); // should never get here
+    }
+    Idx %= ARRAY_SIZE (PciHostIrqs);
+    IrqLine = PciHostIrqs[Idx];
+
+    DEBUG_CODE_BEGIN ();
+    {
+      CHAR16        *DevPathString;
+      STATIC CHAR16 Fallback[] = L"<failed to convert>";
+      UINTN         Segment, Bus, Device, Function;
+
+      DevPathString = ConvertDevicePathToText (DevPath, FALSE, FALSE);
+      if (DevPathString == NULL) {
+        DevPathString = Fallback;
+      }
+      Status = PciIo->GetLocation (PciIo, &Segment, &Bus, &Device, &Function);
+      ASSERT_EFI_ERROR (Status);
+
+      DEBUG ((EFI_D_VERBOSE, "%a: [%02x:%02x.%x] %s -> 0x%02x\n", __FUNCTION__,
+        (UINT32)Bus, (UINT32)Device, (UINT32)Function, DevPathString,
+        IrqLine));
+
+      if (DevPathString != Fallback) {
+        FreePool (DevPathString);
+      }
+    }
+    DEBUG_CODE_END ();
+
+    //
+    // Set PCI Interrupt Line register for this device to PciHostIrqs[Idx]
+    //
+    Status = PciIo->Pci.Write (
+               PciIo,
+               EfiPciIoWidthUint8,
+               PCI_INT_LINE_OFFSET,
+               1,
+               &IrqLine
+               );
+  }
+
+  return Status;
 }
 
 
 VOID
-AcpiInitialization (
-  VOID
+PciAcpiInitialization (
   )
 {
+  UINTN  Pmba;
+
+  //
+  // Query Host Bridge DID to determine platform type
+  //
+  mHostBridgeDevId = PcdGet16 (PcdOvmfHostBridgePciDevId);
+  switch (mHostBridgeDevId) {
+    case INTEL_82441_DEVICE_ID:
+      Pmba = POWER_MGMT_REGISTER_PIIX4 (PIIX4_PMBA);
+      //
+      // 00:01.0 ISA Bridge (PIIX4) LNK routing targets
+      //
+      PciWrite8 (PCI_LIB_ADDRESS (0, 1, 0, 0x60), 0x0b); // A
+      PciWrite8 (PCI_LIB_ADDRESS (0, 1, 0, 0x61), 0x0b); // B
+      PciWrite8 (PCI_LIB_ADDRESS (0, 1, 0, 0x62), 0x0a); // C
+      PciWrite8 (PCI_LIB_ADDRESS (0, 1, 0, 0x63), 0x0a); // D
+      break;
+    case INTEL_Q35_MCH_DEVICE_ID:
+      Pmba = POWER_MGMT_REGISTER_Q35 (ICH9_PMBASE);
+      //
+      // 00:1f.0 LPC Bridge (Q35) LNK routing targets
+      //
+      PciWrite8 (PCI_LIB_ADDRESS (0, 0x1f, 0, 0x60), 0x0a); // A
+      PciWrite8 (PCI_LIB_ADDRESS (0, 0x1f, 0, 0x61), 0x0a); // B
+      PciWrite8 (PCI_LIB_ADDRESS (0, 0x1f, 0, 0x62), 0x0b); // C
+      PciWrite8 (PCI_LIB_ADDRESS (0, 0x1f, 0, 0x63), 0x0b); // D
+      PciWrite8 (PCI_LIB_ADDRESS (0, 0x1f, 0, 0x68), 0x0a); // E
+      PciWrite8 (PCI_LIB_ADDRESS (0, 0x1f, 0, 0x69), 0x0a); // F
+      PciWrite8 (PCI_LIB_ADDRESS (0, 0x1f, 0, 0x6a), 0x0b); // G
+      PciWrite8 (PCI_LIB_ADDRESS (0, 0x1f, 0, 0x6b), 0x0b); // H
+      break;
+    default:
+      DEBUG ((EFI_D_ERROR, "%a: Unknown Host Bridge Device ID: 0x%04x\n",
+        __FUNCTION__, mHostBridgeDevId));
+      ASSERT (FALSE);
+      return;
+  }
+
+  //
+  // Initialize PCI_INTERRUPT_LINE for applicable present PCI devices
+  //
+  VisitAllPciInstances (SetPciIntLine);
+
   //
   // Set ACPI SCI_EN bit in PMCNTRL
   //
-  IoOr16 ((PciRead32 (PCI_LIB_ADDRESS (0, 1, 3, 0x40)) & ~BIT0) + 4, BIT0);
+  IoOr16 ((PciRead32 (Pmba) & ~BIT0) + 4, BIT0);
 }
 
 
@@ -937,8 +1074,7 @@ Returns:
   //
   BdsLibConnectAll ();
 
-  PciInitialization ();
-  AcpiInitialization ();
+  PciAcpiInitialization ();
 
   //
   // Clear the logo after all devices are connected.
@@ -1027,6 +1163,68 @@ Returns:
 }
 
 
+/**
+  Empty callback function executed when the EndOfDxe event group is signaled.
+
+  We only need this function because we'd like to signal EndOfDxe, and for that
+  we need to create an event, with a callback function.
+
+  @param[in] Event    Event whose notification function is being invoked.
+  @param[in] Context  The pointer to the notification function's context, which
+                      is implementation-dependent.
+**/
+STATIC
+VOID
+EFIAPI
+OnEndOfDxe (
+  IN EFI_EVENT Event,
+  IN VOID      *Context
+  )
+{
+}
+
+
+/**
+  Save the S3 boot script.
+
+  Note that we trigger DxeSmmReadyToLock here -- otherwise the script wouldn't
+  be saved actually. Triggering this protocol installation event in turn locks
+  down SMM, so no further changes to LockBoxes or SMRAM are possible
+  afterwards.
+**/
+STATIC
+VOID
+SaveS3BootScript (
+  VOID
+  )
+{
+  EFI_STATUS                 Status;
+  EFI_S3_SAVE_STATE_PROTOCOL *BootScript;
+  EFI_HANDLE                 Handle;
+  STATIC CONST UINT8         Info[] = { 0xDE, 0xAD, 0xBE, 0xEF };
+
+  Status = gBS->LocateProtocol (&gEfiS3SaveStateProtocolGuid, NULL,
+                  (VOID **) &BootScript);
+  ASSERT_EFI_ERROR (Status);
+
+  //
+  // Despite the opcode documentation in the PI spec, the protocol
+  // implementation embeds a deep copy of the info in the boot script, rather
+  // than storing just a pointer to runtime or NVS storage.
+  //
+  Status = BootScript->Write(BootScript, EFI_BOOT_SCRIPT_INFORMATION_OPCODE,
+                         (UINT32) sizeof Info,
+                         (EFI_PHYSICAL_ADDRESS)(UINTN) &Info);
+  ASSERT_EFI_ERROR (Status);
+
+  Handle = NULL;
+  Status = gBS->InstallProtocolInterface (&Handle,
+                  &gEfiDxeSmmReadyToLockProtocolGuid, EFI_NATIVE_INTERFACE,
+                  NULL);
+  ASSERT_EFI_ERROR (Status);
+}
+
+
 VOID
 EFIAPI
 PlatformBdsPolicyBehavior (
@@ -1060,18 +1258,36 @@ Returns:
 --*/
 {
   EFI_STATUS                         Status;
-  UINT16                             Timeout;
-  EFI_EVENT                          UserInputDurationTime;
-  LIST_ENTRY                     *Link;
-  BDS_COMMON_OPTION                  *BootOption;
-  UINTN                              Index;
-  EFI_INPUT_KEY                      Key;
-  EFI_TPL                            OldTpl;
   EFI_BOOT_MODE                      BootMode;
+  EFI_EVENT                          EndOfDxeEvent;
 
   DEBUG ((EFI_D_INFO, "PlatformBdsPolicyBehavior\n"));
 
-  ConnectRootBridge ();
+  VisitAllInstancesOfProtocol (&gEfiPciRootBridgeIoProtocolGuid,
+    ConnectRootBridge, NULL);
+
+  //
+  // We can't signal End-of-Dxe earlier than this. Namely, End-of-Dxe triggers
+  // the preparation of S3 system information. That logic has a hard dependency
+  // on the presence of the FACS ACPI table. Since our ACPI tables are only
+  // installed after PCI enumeration completes, we must not trigger the S3 save
+  // earlier, hence we can't signal End-of-Dxe earlier.
+  //
+  Status = gBS->CreateEventEx (EVT_NOTIFY_SIGNAL, TPL_CALLBACK, OnEndOfDxe,
+                  NULL /* NotifyContext */, &gEfiEndOfDxeEventGroupGuid,
+                  &EndOfDxeEvent);
+  if (!EFI_ERROR (Status)) {
+    gBS->SignalEvent (EndOfDxeEvent);
+    gBS->CloseEvent (EndOfDxeEvent);
+  }
+
+  if (QemuFwCfgS3Enabled ()) {
+    //
+    // Save the boot script too. Note that this requires/includes emitting the
+    // DxeSmmReadyToLock event, which in turn locks down SMM.
+    //
+    SaveS3BootScript ();
+  }
 
   if (PcdGetBool (PcdOvmfFlashVariablesEnable)) {
     DEBUG ((EFI_D_INFO, "PlatformBdsPolicyBehavior: not restoring NvVars "
@@ -1083,11 +1299,6 @@ Returns:
     //
     PlatformBdsRestoreNvVarsFromHardDisk ();
   }
-
-  //
-  // Init the time out value
-  //
-  Timeout = PcdGet16 (PcdPlatformBootTimeOut);
 
   //
   // Load the driver option as the driver option list
@@ -1115,19 +1326,7 @@ Returns:
     //
     PlatformBdsNoConsoleAction ();
   }
-  //
-  // Create a 300ms duration event to ensure user has enough input time to enter Setup
-  //
-  Status = gBS->CreateEvent (
-                  EVT_TIMER,
-                  0,
-                  NULL,
-                  NULL,
-                  &UserInputDurationTime
-                  );
-  ASSERT (Status == EFI_SUCCESS);
-  Status = gBS->SetTimer (UserInputDurationTime, TimerRelative, 3000000);
-  ASSERT (Status == EFI_SUCCESS);
+
   //
   // Memory test and Logo show
   //
@@ -1143,82 +1342,18 @@ Returns:
   //
   TryRunningQemuKernel ();
 
-  //
-  // Give one chance to enter the setup if we
-  // have the time out
-  //
-  if (Timeout != 0) {
-    //PlatformBdsEnterFrontPage (Timeout, FALSE);
-  }
-
   DEBUG ((EFI_D_INFO, "BdsLibConnectAll\n"));
   BdsLibConnectAll ();
   BdsLibEnumerateAllBootOption (BootOptionList);
 
   SetBootOrderFromQemu (BootOptionList);
+  //
+  // The BootOrder variable may have changed, reload the in-memory list with
+  // it.
+  //
+  BdsLibBuildOptionFromVar (BootOptionList, L"BootOrder");
 
-  //
-  // Please uncomment above ConnectAll and EnumerateAll code and remove following first boot
-  // checking code in real production tip.
-  //
-  // In BOOT_WITH_FULL_CONFIGURATION boot mode, should always connect every device
-  // and do enumerate all the default boot options. But in development system board, the boot mode
-  // cannot be BOOT_ASSUMING_NO_CONFIGURATION_CHANGES because the machine box
-  // is always open. So the following code only do the ConnectAll and EnumerateAll at first boot.
-  //
-  Status = BdsLibBuildOptionFromVar (BootOptionList, L"BootOrder");
-  if (EFI_ERROR(Status)) {
-    //
-    // If cannot find "BootOrder" variable,  it may be first boot.
-    // Try to connect all devices and enumerate all boot options here.
-    //
-    BdsLibConnectAll ();
-    BdsLibEnumerateAllBootOption (BootOptionList);
-  }
-
-  //
-  // To give the User a chance to enter Setup here, if user set TimeOut is 0.
-  // BDS should still give user a chance to enter Setup
-  //
-  // Connect first boot option, and then check user input before exit
-  //
-  for (Link = BootOptionList->ForwardLink; Link != BootOptionList;Link = Link->ForwardLink) {
-    BootOption = CR (Link, BDS_COMMON_OPTION, Link, BDS_LOAD_OPTION_SIGNATURE);
-    if (!IS_LOAD_OPTION_TYPE (BootOption->Attribute, LOAD_OPTION_ACTIVE)) {
-      //
-      // skip the header of the link list, becuase it has no boot option
-      //
-      continue;
-    } else {
-      //
-      // Make sure the boot option device path connected, but ignore the BBS device path
-      //
-      if (DevicePathType (BootOption->DevicePath) != BBS_DEVICE_PATH) {
-        BdsLibConnectDevicePath (BootOption->DevicePath);
-      }
-      break;
-    }
-  }
-
-  //
-  // Check whether the user input after the duration time has expired
-  //
-  OldTpl = EfiGetCurrentTpl();
-  gBS->RestoreTPL (TPL_APPLICATION);
-  gBS->WaitForEvent (1, &UserInputDurationTime, &Index);
-  gBS->CloseEvent (UserInputDurationTime);
-  Status = gST->ConIn->ReadKeyStroke (gST->ConIn, &Key);
-  gBS->RaiseTPL (OldTpl);
-
-  if (!EFI_ERROR (Status)) {
-    //
-    // Enter Setup if user input
-    //
-    Timeout = 0xffff;
-    PlatformBdsEnterFrontPage (Timeout, FALSE);
-  }
-
-  return ;
+  PlatformBdsEnterFrontPage (GetFrontPageTimeoutFromQemu(), TRUE);
 }
 
 VOID

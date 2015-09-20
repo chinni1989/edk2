@@ -1,7 +1,8 @@
 /** @file
   Main file for attrib shell level 2 function.
 
-  Copyright (c) 2009 - 2011, Intel Corporation. All rights reserved. <BR>
+  (C) Copyright 2015 Hewlett-Packard Development Company, L.P.<BR>
+  Copyright (c) 2009 - 2014, Intel Corporation. All rights reserved. <BR>
   This program and the accompanying materials
   are licensed and made available under the terms and conditions of the BSD License
   which accompanies this distribution.  The full text of the license may be found at
@@ -54,7 +55,7 @@ ShellCommandRunCls (
   Status = ShellCommandLineParse (EmptyParamList, &Package, &ProblemParam, TRUE);
   if (EFI_ERROR(Status)) {
     if (Status == EFI_VOLUME_CORRUPTED && ProblemParam != NULL) {
-      ShellPrintHiiEx(-1, -1, NULL, STRING_TOKEN (STR_GEN_PROBLEM), gShellLevel3HiiHandle, ProblemParam);
+      ShellPrintHiiEx(-1, -1, NULL, STRING_TOKEN (STR_GEN_PROBLEM), gShellLevel3HiiHandle, L"cls", ProblemParam);  
       FreePool(ProblemParam);
       ShellStatus = SHELL_INVALID_PARAMETER;
     } else {
@@ -77,11 +78,11 @@ ShellCommandRunCls (
         //
         gST->ConOut->ClearScreen (gST->ConOut);
       } else if (ShellCommandLineGetCount(Package) > 2) {
-        ShellPrintHiiEx(-1, -1, NULL, STRING_TOKEN (STR_GEN_TOO_MANY), gShellLevel3HiiHandle);
+        ShellPrintHiiEx(-1, -1, NULL, STRING_TOKEN (STR_GEN_TOO_MANY), gShellLevel3HiiHandle, L"cls");  
         ShellStatus = SHELL_INVALID_PARAMETER;
       } else {
         if (ShellStrToUintn(Param1) > 7 || StrLen(Param1) > 1 || !ShellIsDecimalDigitCharacter(*Param1)) {
-          ShellPrintHiiEx(-1, -1, NULL, STRING_TOKEN (STR_GEN_PROBLEM), gShellLevel3HiiHandle, Param1);
+          ShellPrintHiiEx(-1, -1, NULL, STRING_TOKEN (STR_GEN_PARAM_INV), gShellLevel3HiiHandle, L"cls", Param1);  
           ShellStatus = SHELL_INVALID_PARAMETER;
         } else {
           switch (ShellStrToUintn(Param1)) {
@@ -111,7 +112,7 @@ ShellCommandRunCls (
               break;
           }
           ForeColor = (~ShellStrToUintn(Param1)) & 0xF;
-          Status = gST->ConOut->SetAttribute (gST->ConOut, ForeColor | Background);
+          Status = gST->ConOut->SetAttribute (gST->ConOut, (ForeColor | Background) & 0x7F );
           ASSERT_EFI_ERROR(Status);
           Status = gST->ConOut->ClearScreen (gST->ConOut);
           ASSERT_EFI_ERROR(Status);

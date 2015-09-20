@@ -4,7 +4,7 @@
   of the raw block devices media. Currently "El Torito CD-ROM", Legacy
   MBR, and GPT partition schemes are supported.
 
-Copyright (c) 2006 - 2013, Intel Corporation. All rights reserved.<BR>
+Copyright (c) 2006 - 2014, Intel Corporation. All rights reserved.<BR>
 This program and the accompanying materials
 are licensed and made available under the terms and conditions of the BSD License
 which accompanies this distribution.  The full text of the license may be found at
@@ -165,11 +165,8 @@ PartitionDriverBindingSupported (
                   ControllerHandle,
                   EFI_OPEN_PROTOCOL_TEST_PROTOCOL
                   );
-  if (EFI_ERROR (Status)) {
-    return Status;
-  }
 
-  return EFI_SUCCESS;  
+  return Status;
 }
 
 /**
@@ -579,11 +576,15 @@ ProbeMediaStatus (
   )
 {
   EFI_STATUS                 Status;
+  UINT8                      Buffer[1];
 
   //
-  // Read 1 byte from offset 0 but passing NULL as buffer pointer
+  // Read 1 byte from offset 0 to check if the MediaId is still valid.
+  // The reading operation is synchronious thus it is not worth it to
+  // allocate a buffer from the pool. The destination buffer for the
+  // data is in the stack.
   //
-  Status = DiskIo->ReadDisk (DiskIo, MediaId, 0, 1, NULL);
+  Status = DiskIo->ReadDisk (DiskIo, MediaId, 0, 1, (VOID*)Buffer);
   if ((Status == EFI_NO_MEDIA) || (Status == EFI_MEDIA_CHANGED)) {
     return Status;
   }

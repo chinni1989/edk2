@@ -7,7 +7,7 @@
 #   for important information about configuring this package for your
 #   environment.
 #
-#   Copyright (c) 2010 - 2012, Intel Corporation. All rights reserved.<BR>
+#   Copyright (c) 2010 - 2014, Intel Corporation. All rights reserved.<BR>
 #   This program and the accompanying materials
 #   are licensed and made available under the terms and conditions of the BSD License
 #   which accompanies this distribution. The full text of the license may be found at
@@ -23,8 +23,8 @@
   PLATFORM_VERSION               = 0.01
   DSC_SPECIFICATION              = 0x00010006
   OUTPUT_DIRECTORY               = Build/AppPkg
-  SUPPORTED_ARCHITECTURES        = IA32|IPF|X64
-  BUILD_TARGETS                  = DEBUG|RELEASE
+  SUPPORTED_ARCHITECTURES        = IA32|X64|ARM|AARCH64
+  BUILD_TARGETS                  = DEBUG|RELEASE|NOOPT
   SKUID_IDENTIFIER               = DEFAULT
 
 #
@@ -78,11 +78,10 @@
   UefiHiiServicesLib|MdeModulePkg/Library/UefiHiiServicesLib/UefiHiiServicesLib.inf
   PerformanceLib|MdeModulePkg/Library/DxePerformanceLib/DxePerformanceLib.inf
   HobLib|MdePkg/Library/DxeHobLib/DxeHobLib.inf
+  FileHandleLib|MdePkg/Library/UefiFileHandleLib/UefiFileHandleLib.inf
+  SortLib|MdeModulePkg/Library/UefiSortLib/UefiSortLib.inf
 
   ShellLib|ShellPkg/Library/UefiShellLib/UefiShellLib.inf
-  FileHandleLib|ShellPkg/Library/UefiFileHandleLib/UefiFileHandleLib.inf
-  SortLib|ShellPkg/Library/UefiSortLib/UefiSortLib.inf
-  PathLib|ShellPkg/Library/BasePathLib/BasePathLib.inf
 
   CacheMaintenanceLib|MdePkg/Library/BaseCacheMaintenanceLib/BaseCacheMaintenanceLib.inf
 
@@ -111,9 +110,27 @@
   AppPkg/Applications/Hello/Hello.inf        # No LibC includes or functions.
   AppPkg/Applications/Main/Main.inf          # Simple invocation. No other LibC functions.
   AppPkg/Applications/Enquire/Enquire.inf    #
+  AppPkg/Applications/ArithChk/ArithChk.inf  #
 
-#### After extracting the Python distribution, un-comment the following line to build Python.
+#### A simple fuzzer for OrderedCollectionLib, in particular for
+#### BaseOrderedCollectionRedBlackTreeLib.
+  AppPkg/Applications/OrderedCollectionTest/OrderedCollectionTest.inf {
+    <LibraryClasses>
+      OrderedCollectionLib|MdePkg/Library/BaseOrderedCollectionRedBlackTreeLib/BaseOrderedCollectionRedBlackTreeLib.inf
+      DebugLib|MdePkg/Library/UefiDebugLibConOut/UefiDebugLibConOut.inf
+      DebugPrintErrorLevelLib|MdePkg/Library/BaseDebugPrintErrorLevelLib/BaseDebugPrintErrorLevelLib.inf
+    <PcdsFeatureFlag>
+      gEfiMdePkgTokenSpaceGuid.PcdValidateOrderedCollection|TRUE
+    <PcdsFixedAtBuild>
+      gEfiMdePkgTokenSpaceGuid.PcdDebugPropertyMask|0x2F
+      gEfiMdePkgTokenSpaceGuid.PcdDebugPrintErrorLevel|0x80400040
+  }
+
+#### Un-comment the following line to build Python.
 #  AppPkg/Applications/Python/PythonCore.inf
+
+#### Un-comment the following line to build Lua.
+#  AppPkg/Applications/Lua/Lua.inf
 
 
 ##############################################################################

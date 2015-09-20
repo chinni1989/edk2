@@ -1,9 +1,8 @@
 /** @file
-  
   Handles non-volatile variable store garbage collection, using FTW
   (Fault Tolerant Write) protocol.
 
-Copyright (c) 2006 - 2013, Intel Corporation. All rights reserved.<BR>
+Copyright (c) 2006 - 2015, Intel Corporation. All rights reserved.<BR>
 This program and the accompanying materials
 are licensed and made available under the terms and conditions of the BSD License
 which accompanies this distribution.  The full text of the license may be found at
@@ -47,9 +46,10 @@ GetLbaAndOffsetByAddress (
   EFI_FV_BLOCK_MAP_ENTRY              *FvbMapEntry;
   UINT32                              LbaIndex;
 
+  Fvb     = NULL;
   *Lba    = (EFI_LBA) (-1);
   *Offset = 0;
-  
+
   //
   // Get the proper FVB protocol.
   //

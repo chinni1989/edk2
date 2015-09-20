@@ -1,6 +1,7 @@
 /** @file
+This file contains the internal functions required to generate a Firmware Volume.
 
-Copyright (c) 2004 - 2013, Intel Corporation. All rights reserved.<BR>
+Copyright (c) 2004 - 2014, Intel Corporation. All rights reserved.<BR>
 Portions Copyright (c) 2011 - 2013, ARM Ltd. All rights reserved.<BR>
 This program and the accompanying materials                          
 are licensed and made available under the terms and conditions of the BSD License         
@@ -10,21 +11,18 @@ http://opensource.org/licenses/bsd-license.php
 THE PROGRAM IS DISTRIBUTED UNDER THE BSD LICENSE ON AN "AS IS" BASIS,                     
 WITHOUT WARRANTIES OR REPRESENTATIONS OF ANY KIND, EITHER EXPRESS OR IMPLIED.             
 
-Module Name:
-
-  GenFvInternalLib.c
-
-Abstract:
-
-  This file contains the internal functions required to generate a Firmware Volume.
-
 **/
 
 //
 // Include files
 //
-#ifdef __GNUC__
+
+#if defined(__FreeBSD__)
+#include <uuid.h>
+#elif defined(__GNUC__)
 #include <uuid/uuid.h>
+#endif
+#ifdef __GNUC__
 #include <sys/stat.h>
 #endif
 #include <string.h>
@@ -32,6 +30,8 @@ Abstract:
 #include <io.h>
 #endif
 #include <assert.h>
+
+#include <Guid/FfsSectionAlignmentPadding.h>
 
 #include "GenFvInternalLib.h"
 #include "FvLib.h"
@@ -41,10 +41,11 @@ Abstract:
 BOOLEAN mArm = FALSE;
 STATIC UINT32   MaxFfsAlignment = 0;
 
-EFI_GUID  mEfiFirmwareVolumeTopFileGuid = EFI_FFS_VOLUME_TOP_FILE_GUID;
+EFI_GUID  mEfiFirmwareVolumeTopFileGuid       = EFI_FFS_VOLUME_TOP_FILE_GUID;
 EFI_GUID  mFileGuidArray [MAX_NUMBER_OF_FILES_IN_FV];
-EFI_GUID  mZeroGuid                 = {0x0, 0x0, 0x0, {0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0}};
-EFI_GUID  mDefaultCapsuleGuid       = {0x3B6686BD, 0x0D76, 0x4030, { 0xB7, 0x0E, 0xB5, 0x51, 0x9E, 0x2F, 0xC5, 0xA0 }};
+EFI_GUID  mZeroGuid                           = {0x0, 0x0, 0x0, {0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0}};
+EFI_GUID  mDefaultCapsuleGuid                 = {0x3B6686BD, 0x0D76, 0x4030, { 0xB7, 0x0E, 0xB5, 0x51, 0x9E, 0x2F, 0xC5, 0xA0 }};
+EFI_GUID  mEfiFfsSectionAlignmentPaddingGuid  = EFI_FFS_SECTION_ALIGNMENT_PADDING_GUID;
 
 CHAR8      *mFvbAttributeName[] = {
   EFI_FVB2_READ_DISABLED_CAP_STRING, 
@@ -187,7 +188,7 @@ Returns:
   EFI_NOT_FOUND     A required string was not found in the INF file.
 --*/
 {
-  CHAR8       Value[_MAX_PATH];
+  CHAR8       Value[MAX_LONG_FILE_PATH];
   UINT64      Value64;
   UINTN       Index;
   UINTN       Number;
@@ -730,7 +731,7 @@ Returns:
 
 --*/
 {
-  CHAR8                               PeMapFileName [_MAX_PATH];
+  CHAR8                               PeMapFileName [MAX_LONG_FILE_PATH];
   CHAR8                               *Cptr, *Cptr2;
   CHAR8                               FileGuidName [MAX_LINE_LEN];
   FILE                                *PeMapFile;
@@ -866,7 +867,7 @@ Returns:
   //
   // Open PeMapFile
   //
-  PeMapFile = fopen (PeMapFileName, "r");
+  PeMapFile = fopen (LongFilePath (PeMapFileName), "r");
   if (PeMapFile == NULL) {
     // fprintf (stdout, "can't open %s file to reading\n", PeMapFileName);
     return EFI_ABORTED;
@@ -936,6 +937,153 @@ Returns:
   return EFI_SUCCESS;
 }
 
+STATIC
+BOOLEAN
+AdjustInternalFfsPadding (
+  IN OUT  EFI_FFS_FILE_HEADER   *FfsFile,
+  IN OUT  MEMORY_FILE           *FvImage,
+  IN      UINTN                 Alignment,
+  IN OUT  UINTN                 *FileSize
+  )
+/*++
+
+Routine Description:
+
+  This function looks for a dedicated alignment padding section in the FFS, and
+  shrinks it to the size required to line up subsequent sections correctly.
+
+Arguments:
+
+  FfsFile               A pointer to Ffs file image.
+  FvImage               The memory image of the FV to adjust it to.
+  Alignment             Current file alignment
+  FileSize              Reference to a variable holding the size of the FFS file
+
+Returns:
+
+  TRUE                  Padding section was found and updated successfully
+  FALSE                 Otherwise
+
+--*/
+{
+  EFI_FILE_SECTION_POINTER  PadSection;
+  UINT8                     *Remainder;
+  EFI_STATUS                Status;
+  UINT32                    FfsHeaderLength;
+  UINT32                    FfsFileLength;
+  UINT32                    PadSize;
+  UINTN                     Misalignment;
+  EFI_FFS_INTEGRITY_CHECK   *IntegrityCheck;
+
+  //
+  // Figure out the misalignment: all FFS sections are aligned relative to the
+  // start of the FFS payload, so use that as the base of the misalignment
+  // computation.
+  //
+  FfsHeaderLength = GetFfsHeaderLength(FfsFile);
+  Misalignment = (UINTN) FvImage->CurrentFilePointer -
+                 (UINTN) FvImage->FileImage + FfsHeaderLength;
+  Misalignment &= Alignment - 1;
+  if (Misalignment == 0) {
+    // Nothing to do, return success
+    return TRUE;
+  }
+
+  //
+  // We only apply this optimization to FFS files with the FIXED attribute set,
+  // since the FFS will not be loadable at arbitrary offsets anymore after
+  // we adjust the size of the padding section.
+  //
+  if ((FfsFile->Attributes & FFS_ATTRIB_FIXED) == 0) {
+    return FALSE;
+  }
+
+  //
+  // Look for a dedicated padding section that we can adjust to compensate
+  // for the misalignment. If such a padding section exists, it precedes all
+  // sections with alignment requirements, and so the adjustment will correct
+  // all of them.
+  //
+  Status = GetSectionByType (FfsFile, EFI_SECTION_FREEFORM_SUBTYPE_GUID, 1,
+             &PadSection);
+  if (EFI_ERROR (Status) ||
+      CompareGuid (&PadSection.FreeformSubtypeSection->SubTypeGuid,
+        &mEfiFfsSectionAlignmentPaddingGuid) != 0) {
+    return FALSE;
+  }
+
+  //
+  // Find out if the size of the padding section is sufficient to compensate
+  // for the misalignment.
+  //
+  PadSize = GetSectionFileLength (PadSection.CommonHeader);
+  if (Misalignment > PadSize - sizeof (EFI_FREEFORM_SUBTYPE_GUID_SECTION)) {
+    return FALSE;
+  }
+
+  //
+  // Move the remainder of the FFS file towards the front, and adjust the
+  // file size output parameter.
+  //
+  Remainder = (UINT8 *) PadSection.CommonHeader + PadSize;
+  memmove (Remainder - Misalignment, Remainder,
+           *FileSize - (UINTN) (Remainder - (UINTN) FfsFile));
+  *FileSize -= Misalignment;
+
+  //
+  // Update the padding section's length with the new values. Note that the
+  // padding is always < 64 KB, so we can ignore EFI_COMMON_SECTION_HEADER2
+  // ExtendedSize.
+  //
+  PadSize -= Misalignment;
+  PadSection.CommonHeader->Size[0] = (UINT8) (PadSize & 0xff);
+  PadSection.CommonHeader->Size[1] = (UINT8) ((PadSize & 0xff00) >> 8);
+  PadSection.CommonHeader->Size[2] = (UINT8) ((PadSize & 0xff0000) >> 16);
+
+  //
+  // Update the FFS header with the new overall length
+  //
+  FfsFileLength = GetFfsFileLength (FfsFile) - Misalignment;
+  if (FfsHeaderLength > sizeof(EFI_FFS_FILE_HEADER)) {
+    ((EFI_FFS_FILE_HEADER2 *)FfsFile)->ExtendedSize = FfsFileLength;
+  } else {
+    FfsFile->Size[0] = (UINT8) (FfsFileLength & 0x000000FF);
+    FfsFile->Size[1] = (UINT8) ((FfsFileLength & 0x0000FF00) >> 8);
+    FfsFile->Size[2] = (UINT8) ((FfsFileLength & 0x00FF0000) >> 16);
+  }
+
+  //
+  // Clear the alignment bits: these have become meaningless now that we have
+  // adjusted the padding section.
+  //
+  FfsFile->Attributes &= ~FFS_ATTRIB_DATA_ALIGNMENT;
+
+  //
+  // Recalculate the FFS header checksum. Instead of setting Header and State
+  // both to zero, set Header to (UINT8)(-State) so State preserves its original
+  // value
+  //
+  IntegrityCheck = &FfsFile->IntegrityCheck;
+  IntegrityCheck->Checksum.Header = (UINT8) (0x100 - FfsFile->State);
+  IntegrityCheck->Checksum.File = 0;
+
+  IntegrityCheck->Checksum.Header = CalculateChecksum8 (
+                                      (UINT8 *) FfsFile, FfsHeaderLength);
+
+  if (FfsFile->Attributes & FFS_ATTRIB_CHECKSUM) {
+    //
+    // Ffs header checksum = zero, so only need to calculate ffs body.
+    //
+    IntegrityCheck->Checksum.File = CalculateChecksum8 (
+                                      (UINT8 *) FfsFile + FfsHeaderLength,
+                                      FfsFileLength - FfsHeaderLength);
+  } else {
+    IntegrityCheck->Checksum.File = FFS_FIXED_CHECKSUM;
+  }
+
+  return TRUE;
+}
+
 EFI_STATUS
 AddFile (
   IN OUT MEMORY_FILE          *FvImage,
@@ -992,7 +1140,7 @@ Returns:
   //
   // Read the file to add
   //
-  NewFile = fopen (FvInfo->FvFiles[Index], "rb");
+  NewFile = fopen (LongFilePath (FvInfo->FvFiles[Index]), "rb");
 
   if (NewFile == NULL) {
     Error (NULL, 0, 0001, "Error opening file", FvInfo->FvFiles[Index]);
@@ -1142,11 +1290,14 @@ Returns:
   //
   // Add pad file if necessary
   //
-  Status = AddPadFile (FvImage, 1 << CurrentFileAlignment, *VtfFileImage, NULL, FileSize);
-  if (EFI_ERROR (Status)) {
-    Error (NULL, 0, 4002, "Resource", "FV space is full, could not add pad file for data alignment property.");
-    free (FileBuffer);
-    return EFI_ABORTED;
+  if (!AdjustInternalFfsPadding ((EFI_FFS_FILE_HEADER *) FileBuffer, FvImage,
+         1 << CurrentFileAlignment, &FileSize)) {
+    Status = AddPadFile (FvImage, 1 << CurrentFileAlignment, *VtfFileImage, NULL, FileSize);
+    if (EFI_ERROR (Status)) {
+      Error (NULL, 0, 4002, "Resource", "FV space is full, could not add pad file for data alignment property.");
+      free (FileBuffer);
+      return EFI_ABORTED;
+    }
   }
   //
   // Add file
@@ -2077,12 +2228,12 @@ Returns:
   UINT8                           *FvImage;
   UINTN                           FvImageSize;
   FILE                            *FvFile;
-  CHAR8                           FvMapName [_MAX_PATH];
+  CHAR8                           FvMapName [MAX_LONG_FILE_PATH];
   FILE                            *FvMapFile;
   EFI_FIRMWARE_VOLUME_EXT_HEADER  *FvExtHeader;
   FILE                            *FvExtHeaderFile;
   UINTN                           FileSize;
-  CHAR8                           FvReportName[_MAX_PATH];
+  CHAR8                           FvReportName[MAX_LONG_FILE_PATH];
   FILE                            *FvReportFile;
 
   FvBufferHeader = NULL;
@@ -2152,7 +2303,7 @@ Returns:
     //
     // Open the FV Extension Header file
     //
-    FvExtHeaderFile = fopen (mFvDataInfo.FvExtHeaderFile, "rb");
+    FvExtHeaderFile = fopen (LongFilePath (mFvDataInfo.FvExtHeaderFile), "rb");
 
     //
     // Get the file size
@@ -2343,7 +2494,7 @@ Returns:
   //
   // Open FvMap file
   //
-  FvMapFile = fopen (FvMapName, "w");
+  FvMapFile = fopen (LongFilePath (FvMapName), "w");
   if (FvMapFile == NULL) {
     Error (NULL, 0, 0001, "Error opening file", FvMapName);
     return EFI_ABORTED;
@@ -2352,7 +2503,7 @@ Returns:
   //
   // Open FvReport file
   //
-  FvReportFile = fopen(FvReportName, "w");
+  FvReportFile = fopen (LongFilePath (FvReportName), "w");
   if (FvReportFile == NULL) {
     Error (NULL, 0, 0001, "Error opening file", FvReportName);
     return EFI_ABORTED;
@@ -2484,7 +2635,7 @@ WriteFile:
   //
   // Write fv file
   //
-  FvFile = fopen (FvFileName, "wb");
+  FvFile = fopen (LongFilePath (FvFileName), "wb");
   if (FvFile == NULL) {
     Error (NULL, 0, 0001, "Error opening file", FvFileName);
     Status = EFI_ABORTED;
@@ -2651,7 +2802,7 @@ Returns:
   // Calculate PI extension header
   //
   if (mFvDataInfo.FvExtHeaderFile[0] != '\0') {
-    fpin = fopen (mFvDataInfo.FvExtHeaderFile, "rb");
+    fpin = fopen (LongFilePath (mFvDataInfo.FvExtHeaderFile), "rb");
     if (fpin == NULL) {
       Error (NULL, 0, 0001, "Error opening file", mFvDataInfo.FvExtHeaderFile);
       return EFI_ABORTED;
@@ -2678,7 +2829,7 @@ Returns:
     // Open FFS file
     //
     fpin = NULL;
-    fpin = fopen (FvInfoPtr->FvFiles[Index], "rb");
+    fpin = fopen (LongFilePath (FvInfoPtr->FvFiles[Index]), "rb");
     if (fpin == NULL) {
       Error (NULL, 0, 0001, "Error opening file", FvInfoPtr->FvFiles[Index]);
       return EFI_ABORTED;
@@ -2915,7 +3066,7 @@ Returns:
   EFI_TE_IMAGE_HEADER                   *TEImageHeader;
   UINT8                                 *MemoryImagePointer;
   EFI_IMAGE_SECTION_HEADER              *SectionHeader;
-  CHAR8                                 PeFileName [_MAX_PATH];
+  CHAR8                                 PeFileName [MAX_LONG_FILE_PATH];
   CHAR8                                 *Cptr;
   FILE                                  *PeFile;
   UINT8                                 *PeFileBuffer;
@@ -3066,7 +3217,7 @@ Returns:
             *(Cptr + 3) = 'i';
             *(Cptr + 4) = '\0';
           }
-          PeFile = fopen (PeFileName, "rb");
+          PeFile = fopen (LongFilePath (PeFileName), "rb");
           if (PeFile == NULL) {
             Warning (NULL, 0, 0, "Invalid", "The file %s has no .reloc section.", FileName);
             //Error (NULL, 0, 3000, "Invalid", "The file %s has no .reloc section.", FileName);
@@ -3322,7 +3473,7 @@ Returns:
         *(Cptr + 4) = '\0';
       }
 
-      PeFile = fopen (PeFileName, "rb");
+      PeFile = fopen (LongFilePath (PeFileName), "rb");
       if (PeFile == NULL) {
         Warning (NULL, 0, 0, "Invalid", "The file %s has no .reloc section.", FileName);
         //Error (NULL, 0, 3000, "Invalid", "The file %s has no .reloc section.", FileName);
@@ -3567,7 +3718,7 @@ Returns:
   EFI_NOT_FOUND     A required string was not found in the INF file.
 --*/
 {
-  CHAR8       Value[_MAX_PATH];
+  CHAR8       Value[MAX_LONG_FILE_PATH];
   UINT64      Value64;
   UINTN       Index, Number;
   EFI_STATUS  Status;
@@ -3773,7 +3924,7 @@ Returns:
   FileSize = 0;
   CapSize  = mCapDataInfo.HeaderSize;
   while (mCapDataInfo.CapFiles [Index][0] != '\0') {
-    fpin = fopen (mCapDataInfo.CapFiles[Index], "rb");
+    fpin = fopen (LongFilePath (mCapDataInfo.CapFiles[Index]), "rb");
     if (fpin == NULL) {
       Error (NULL, 0, 0001, "Error opening file", mCapDataInfo.CapFiles[Index]);
       return EFI_ABORTED;
@@ -3811,7 +3962,7 @@ Returns:
   FileSize = 0;
   CapSize  = CapsuleHeader->HeaderSize;
   while (mCapDataInfo.CapFiles [Index][0] != '\0') {
-    fpin = fopen (mCapDataInfo.CapFiles[Index], "rb");
+    fpin = fopen (LongFilePath (mCapDataInfo.CapFiles[Index]), "rb");
     if (fpin == NULL) {
       Error (NULL, 0, 0001, "Error opening file", mCapDataInfo.CapFiles[Index]);
       free (CapBuffer);
@@ -3827,7 +3978,7 @@ Returns:
   //
   // write capsule data into the output file
   //
-  fpout = fopen (CapFileName, "wb");
+  fpout = fopen (LongFilePath (CapFileName), "wb");
   if (fpout == NULL) {
     Error (NULL, 0, 0001, "Error opening file", CapFileName);
     free (CapBuffer);

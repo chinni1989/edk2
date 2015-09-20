@@ -19,11 +19,17 @@ ifndef ARCH
   #
   uname_m = $(shell uname -m)
   $(info Attempting to detect ARCH from 'uname -m': $(uname_m))
-  ifeq ($(uname_m),x86_64)
+  ifneq (,$(strip $(filter $(uname_m), x86_64 amd64)))
     ARCH=X64
   endif
   ifeq ($(patsubst i%86,IA32,$(uname_m)),IA32)
     ARCH=IA32
+  endif
+  ifneq (,$(findstring aarch64,$(uname_m)))
+    ARCH=AARCH64
+  endif
+  ifneq (,$(findstring arm,$(uname_m)))
+    ARCH=ARM
   endif
   ifndef ARCH
     $(info Could not detected ARCH from uname results)

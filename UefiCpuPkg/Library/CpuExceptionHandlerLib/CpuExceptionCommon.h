@@ -1,7 +1,7 @@
 /** @file
   Common header file for CPU Exception Handler Library.
 
-  Copyright (c) 2012 - 2013, Intel Corporation. All rights reserved.<BR>
+  Copyright (c) 2012 - 2015, Intel Corporation. All rights reserved.<BR>
   This program and the accompanying materials
   are licensed and made available under the terms and conditions of the BSD License
   which accompanies this distribution.  The full text of the license may be found at
@@ -204,17 +204,19 @@ ArchRestoreExceptionContext (
   );
 
 /**
-  Fix up the vector number in the vector code.
+  Fix up the vector number and function address in the vector code.
  
-  @param[in] VectorBase   Base address of the vector handler.
-  @param[in] VectorNum    Index of vector.
+  @param[in] NewVectorAddr   New vector handler address.
+  @param[in] VectorNum       Index of vector.
+  @param[in] OldVectorAddr   Old vector handler address.
 
 **/
 VOID
 EFIAPI
 AsmVectorNumFixup (
-  IN VOID    *VectorBase,
-  IN UINT8   VectorNum
+  IN VOID    *NewVectorAddr,
+  IN UINT8   VectorNum,
+  IN VOID    *OldVectorAddr
   );
 
 /**
@@ -233,6 +235,18 @@ ReadAndVerifyVectorInfo (
   IN  EFI_VECTOR_HANDOFF_INFO       *VectorInfo,
   OUT RESERVED_VECTORS_DATA         *ReservedVector,
   IN  UINTN                         VectorCount
+  );
+
+/**
+  Get ASCII format string exception name by exception type.
+
+  @param ExceptionType  Exception type.
+
+  @return  ASCII format string exception name.
+**/
+CONST CHAR8 *
+GetExceptionNameStr (
+  IN EFI_EXCEPTION_TYPE          ExceptionType
   );
 
 #endif

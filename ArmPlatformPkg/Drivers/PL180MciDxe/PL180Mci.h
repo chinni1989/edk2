@@ -2,14 +2,14 @@
   Header for the MMC Host Protocol implementation for the ARM PrimeCell PL180.
 
   Copyright (c) 2011-2012, ARM Limited. All rights reserved.
-  
-  This program and the accompanying materials                          
-  are licensed and made available under the terms and conditions of the BSD License         
-  which accompanies this distribution.  The full text of the license may be found at        
-  http://opensource.org/licenses/bsd-license.php                                            
 
-  THE PROGRAM IS DISTRIBUTED UNDER THE BSD LICENSE ON AN "AS IS" BASIS,                     
-  WITHOUT WARRANTIES OR REPRESENTATIONS OF ANY KIND, EITHER EXPRESS OR IMPLIED.             
+  This program and the accompanying materials
+  are licensed and made available under the terms and conditions of the BSD License
+  which accompanies this distribution.  The full text of the license may be found at
+  http://opensource.org/licenses/bsd-license.php
+
+  THE PROGRAM IS DISTRIBUTED UNDER THE BSD LICENSE ON AN "AS IS" BASIS,
+  WITHOUT WARRANTIES OR REPRESENTATIONS OF ANY KIND, EITHER EXPRESS OR IMPLIED.
 
 **/
 
@@ -51,6 +51,23 @@
 #define MCI_SELECT_REG                  (MCI_SYSCTL + 0x044)
 #define MCI_FIFOCOUNT_REG               (MCI_SYSCTL + 0x048)
 #define MCI_FIFO_REG                    (MCI_SYSCTL + 0x080)
+#define MCI_PERIPH_ID_REG0              (MCI_SYSCTL + 0xFE0)
+#define MCI_PERIPH_ID_REG1              (MCI_SYSCTL + 0xFE4)
+#define MCI_PERIPH_ID_REG2              (MCI_SYSCTL + 0xFE8)
+#define MCI_PERIPH_ID_REG3              (MCI_SYSCTL + 0xFEC)
+#define MCI_PCELL_ID_REG0               (MCI_SYSCTL + 0xFF0)
+#define MCI_PCELL_ID_REG1               (MCI_SYSCTL + 0xFF4)
+#define MCI_PCELL_ID_REG2               (MCI_SYSCTL + 0xFF8)
+#define MCI_PCELL_ID_REG3               (MCI_SYSCTL + 0xFFC)
+
+#define MCI_PERIPH_ID0                  0x80
+#define MCI_PERIPH_ID1                  0x11
+#define MCI_PERIPH_ID2                  0x04
+#define MCI_PERIPH_ID3                  0x00
+#define MCI_PCELL_ID0                   0x0D
+#define MCI_PCELL_ID1                   0xF0
+#define MCI_PCELL_ID2                   0x05
+#define MCI_PCELL_ID3                   0xB1
 
 #define MCI_POWER_OFF                   0
 #define MCI_POWER_UP                    BIT1

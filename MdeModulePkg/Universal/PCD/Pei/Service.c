@@ -2,7 +2,7 @@
   The driver internal functions are implmented here.
   They build Pei PCD database, and provide access service to PCD database.
 
-Copyright (c) 2006 - 2013, Intel Corporation. All rights reserved.<BR>
+Copyright (c) 2006 - 2015, Intel Corporation. All rights reserved.<BR>
 This program and the accompanying materials
 are licensed and made available under the terms and conditions of the BSD License
 which accompanies this distribution.  The full text of the license may be found at
@@ -107,10 +107,18 @@ GetPcdName (
   )
 {
   UINT8             *StringTable;
+  UINTN             NameSize;
   PCD_NAME_INDEX    *PcdNameIndex;
   CHAR8             *TokenSpaceName;
   CHAR8             *PcdName;
   CHAR8             *Name;
+
+  //
+  // Return NULL when PCD name table is absent. 
+  //
+  if (Database->PcdNameTableOffset == 0) {
+    return NULL;
+  }
 
   //
   // TokenNumber Zero is reserved as PCD_INVALID_TOKEN_NUMBER.
@@ -137,14 +145,15 @@ GetPcdName (
     //
     // Need to get the full PCD name.
     //
-    Name = AllocateZeroPool (AsciiStrSize (TokenSpaceName) + AsciiStrSize (PcdName));
+    NameSize = AsciiStrSize (TokenSpaceName) + AsciiStrSize (PcdName);
+    Name = AllocateZeroPool (NameSize);
     ASSERT (Name != NULL);
     //
     // Catenate TokenSpaceCName and PcdCName with a '.' to form the full PCD name.
     //
-    AsciiStrCat (Name, TokenSpaceName);
+    AsciiStrCatS (Name, NameSize, TokenSpaceName);
     Name[AsciiStrSize (TokenSpaceName) - sizeof (CHAR8)] = '.';
-    AsciiStrCat (Name, PcdName);  
+    AsciiStrCatS (Name, NameSize, PcdName);  
   }
 
   return Name;
@@ -947,6 +956,7 @@ GetWorker (
   PEI_PCD_DATABASE    *PeiPcdDb;
   UINT32              LocalTokenNumber;
   UINT32              LocalTokenCount;
+  UINT8               *VaraiableDefaultBuffer;
 
   //
   // TokenNumber Zero is reserved as PCD_INVALID_TOKEN_NUMBER.
@@ -986,20 +996,37 @@ GetWorker (
       Guid = (EFI_GUID *) ((UINT8 *)PeiPcdDb + PeiPcdDb->GuidTableOffset) + VariableHead->GuidTableIndex;
       Name = (UINT16*)&StringTable[VariableHead->StringIndex];
 
-      Status = GetHiiVariable (Guid, Name, &Data, &DataSize);
-
-      if (Status == EFI_SUCCESS) {
-        return (VOID *) ((UINT8 *) Data + VariableHead->Offset);
+      if ((LocalTokenNumber & PCD_TYPE_ALL_SET) == (PCD_TYPE_HII|PCD_TYPE_STRING)) {
+        //
+        // If a HII type PCD's datum type is VOID*, the DefaultValueOffset is the index of 
+        // string array in string table.
+        //
+        VaraiableDefaultBuffer = (UINT8 *) &StringTable[*(STRING_HEAD*)((UINT8*) PeiPcdDb + VariableHead->DefaultValueOffset)];   
       } else {
-        //
-        // Return the default value specified by Platform Integrator 
-        //
-        if ((LocalTokenNumber & PCD_TYPE_ALL_SET) == (PCD_TYPE_HII|PCD_TYPE_STRING)) {
-          return (VOID*)&StringTable[*(STRING_HEAD*)((UINT8*)PeiPcdDb + VariableHead->DefaultValueOffset)];
-        } else {
-          return (VOID *) ((UINT8 *) PeiPcdDb + VariableHead->DefaultValueOffset);
-        }
+        VaraiableDefaultBuffer = (UINT8 *) PeiPcdDb + VariableHead->DefaultValueOffset;
       }
+      Status = GetHiiVariable (Guid, Name, &Data, &DataSize);
+      if ((Status == EFI_SUCCESS) && (DataSize >= (VariableHead->Offset + GetSize))) {
+        if (GetSize == 0) {
+          //
+          // It is a pointer type. So get the MaxSize reserved for
+          // this PCD entry.
+          //
+          GetPtrTypeSize (TokenNumber, &GetSize, PeiPcdDb);
+          if (GetSize > (DataSize - VariableHead->Offset)) {
+            //
+            // Use actual valid size.
+            //
+            GetSize = DataSize - VariableHead->Offset;
+          }
+        }
+        //
+        // If the operation is successful, we copy the data
+        // to the default value buffer in the PCD Database.
+        //
+        CopyMem (VaraiableDefaultBuffer, (UINT8 *) Data + VariableHead->Offset, GetSize);
+      }
+      return (VOID *) VaraiableDefaultBuffer;
     }
 
     case PCD_TYPE_DATA:

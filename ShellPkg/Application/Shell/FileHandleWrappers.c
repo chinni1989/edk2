@@ -2,8 +2,8 @@
   EFI_FILE_PROTOCOL wrappers for other items (Like Environment Variables,
   StdIn, StdOut, StdErr, etc...).
 
-  Copyright (c) 2009 - 2014, Intel Corporation. All rights reserved.<BR>
-  Copyright (c) 2013, Hewlett-Packard Development Company, L.P.
+  Copyright (c) 2009 - 2015, Intel Corporation. All rights reserved.<BR>
+  (C) Copyright 2013 Hewlett-Packard Development Company, L.P.<BR>
   This program and the accompanying materials
   are licensed and made available under the terms and conditions of the BSD License
   which accompanies this distribution.  The full text of the license may be found at
@@ -509,21 +509,24 @@ FileInterfaceStdInRead(
         if (StrStr(CurrentString + TabPos, L":") == NULL) {
           Cwd = ShellInfoObject.NewEfiShellProtocol->GetCurDir(NULL);
           if (Cwd != NULL) {
-            StrCpy(TabStr, Cwd);
+            StrnCpyS(TabStr, (*BufferSize)/sizeof(CHAR16), Cwd, (*BufferSize)/sizeof(CHAR16) - 1);
             if (TabStr[StrLen(TabStr)-1] == L'\\' && *(CurrentString + TabPos) == L'\\' ) {
               TabStr[StrLen(TabStr)-1] = CHAR_NULL;
             }
-            StrnCat(TabStr, CurrentString + TabPos, (StringLen - TabPos) * sizeof (CHAR16));
+            StrnCatS( TabStr, 
+                      (*BufferSize)/sizeof(CHAR16), 
+                      CurrentString + TabPos, 
+                      StringLen - TabPos
+                      );
           } else {
-            StrCpy(TabStr, L"");
-            StrnCat(TabStr, CurrentString + TabPos, (StringLen - TabPos) * sizeof (CHAR16));
+            *TabStr = CHAR_NULL;
+            StrnCatS(TabStr, (*BufferSize)/sizeof(CHAR16), CurrentString + TabPos, StringLen - TabPos);
           }
         } else {
-          StrCpy(TabStr, CurrentString + TabPos);
+          StrnCpyS(TabStr, (*BufferSize)/sizeof(CHAR16), CurrentString + TabPos, (*BufferSize)/sizeof(CHAR16) - 1);
         }
-        StrCat(TabStr, L"*");
+        StrnCatS(TabStr, (*BufferSize)/sizeof(CHAR16), L"*", (*BufferSize)/sizeof(CHAR16) - 1 - StrLen(TabStr));
         FoundFileList = NULL;
-//        TabStr = PathCleanUpDirectories(TabStr);
         Status  = ShellInfoObject.NewEfiShellProtocol->FindFiles(TabStr, &FoundFileList);
         for ( TempStr = CurrentString
             ; *TempStr == L' '
@@ -1141,6 +1144,7 @@ CreateFileInterfaceEnv(
   )
 {
   EFI_FILE_PROTOCOL_ENVIRONMENT  *EnvFileInterface;
+  UINTN                          EnvNameSize;
 
   if (EnvName == NULL) {
     return (NULL);
@@ -1149,7 +1153,8 @@ CreateFileInterfaceEnv(
   //
   // Get some memory
   //
-  EnvFileInterface = AllocateZeroPool(sizeof(EFI_FILE_PROTOCOL_ENVIRONMENT)+StrSize(EnvName));
+  EnvNameSize = StrSize(EnvName);
+  EnvFileInterface = AllocateZeroPool(sizeof(EFI_FILE_PROTOCOL_ENVIRONMENT)+EnvNameSize);
   if (EnvFileInterface == NULL){
     return (NULL);
   }
@@ -1167,8 +1172,8 @@ CreateFileInterfaceEnv(
   EnvFileInterface->Flush       = FileInterfaceNopGeneric;
   EnvFileInterface->Delete      = FileInterfaceEnvDelete;
   EnvFileInterface->Read        = FileInterfaceEnvRead;
-
-  StrCpy(EnvFileInterface->Name, EnvName);
+  
+  CopyMem(EnvFileInterface->Name, EnvName, EnvNameSize);
 
   //
   // Assign the different members for Volatile and Non-Volatile variables

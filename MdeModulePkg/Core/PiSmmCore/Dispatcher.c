@@ -27,7 +27,8 @@
 
   Depex - Dependency Expresion.
 
-  Copyright (c) 2009 - 2013, Intel Corporation. All rights reserved.<BR>
+  Copyright (c) 2014, Hewlett-Packard Development Company, L.P.
+  Copyright (c) 2009 - 2014, Intel Corporation. All rights reserved.<BR>
   This program and the accompanying materials are licensed and made available 
   under the terms and conditions of the BSD License which accompanies this 
   distribution.  The full text of the license may be found at        
@@ -518,7 +519,7 @@ SmmLoadImage (
   // Align buffer on section boundry
   //
   ImageContext.ImageAddress += ImageContext.SectionAlignment - 1;
-  ImageContext.ImageAddress &= ~(ImageContext.SectionAlignment - 1);
+  ImageContext.ImageAddress &= ~((EFI_PHYSICAL_ADDRESS)(ImageContext.SectionAlignment - 1));
 
   //
   // Load the image to our new buffer
@@ -568,6 +569,7 @@ SmmLoadImage (
     return Status;
   }
 
+  ZeroMem (DriverEntry->LoadedImage, sizeof (EFI_LOADED_IMAGE_PROTOCOL));
   //
   // Fill in the remaining fields of the Loaded Image Protocol instance.
   // Note: ImageBase is an SMRAM address that can not be accessed outside of SMRAM if SMRAM window is closed.
@@ -872,10 +874,12 @@ SmmDispatcher (
       //
       // For each SMM driver, pass NULL as ImageHandle
       //
+      RegisterSmramProfileImage (DriverEntry, TRUE);
       PERF_START (DriverEntry->ImageHandle, "StartImage:", NULL, 0);
       Status = ((EFI_IMAGE_ENTRY_POINT)(UINTN)DriverEntry->ImageEntryPoint)(DriverEntry->ImageHandle, gST);
       PERF_END (DriverEntry->ImageHandle, "StartImage:", NULL, 0);
       if (EFI_ERROR(Status)){
+        UnregisterSmramProfileImage (DriverEntry, TRUE);
         SmmFreePages(DriverEntry->ImageBuffer, DriverEntry->NumberOfPage);
       }
 
@@ -1211,7 +1215,9 @@ SmmDriverDispatchHandler (
   EFI_SMM_DRIVER_ENTRY          *DriverEntry;
   EFI_GUID                      *AprioriFile;
   UINTN                         AprioriEntryCount;
-  UINTN                         Index;
+  UINTN                         HandleIndex;
+  UINTN                         SmmTypeIndex;
+  UINTN                         AprioriIndex;
   LIST_ENTRY                    *Link;
   UINT32                        AuthenticationStatus;
   UINTN                         SizeOfBuffer;
@@ -1228,8 +1234,8 @@ SmmDriverDispatchHandler (
     return EFI_NOT_FOUND;
   }
 
-  for (Index = 0; Index < HandleCount; Index++) {
-    FvHandle = HandleBuffer[Index];
+  for (HandleIndex = 0; HandleIndex < HandleCount; HandleIndex++) {
+    FvHandle = HandleBuffer[HandleIndex];
 
     if (FvHasBeenProcessed (FvHandle)) {
       //
@@ -1264,13 +1270,13 @@ SmmDriverDispatchHandler (
     // Discover Drivers in FV and add them to the Discovered Driver List.
     // Process EFI_FV_FILETYPE_SMM type and then EFI_FV_FILETYPE_COMBINED_SMM_DXE
     //
-    for (Index = 0; Index < sizeof (mSmmFileTypes)/sizeof (EFI_FV_FILETYPE); Index++) {
+    for (SmmTypeIndex = 0; SmmTypeIndex < sizeof (mSmmFileTypes)/sizeof (EFI_FV_FILETYPE); SmmTypeIndex++) {
       //
       // Initialize the search key
       //
       Key = 0;
       do {
-        Type = mSmmFileTypes[Index];
+        Type = mSmmFileTypes[SmmTypeIndex];
         GetNextFileStatus = Fv->GetNextFile (
                                   Fv,
                                   &Key,
@@ -1311,10 +1317,10 @@ SmmDriverDispatchHandler (
     // is only valid for the FV that it resided in.
     //
 
-    for (Index = 0; Index < AprioriEntryCount; Index++) {
+    for (AprioriIndex = 0; AprioriIndex < AprioriEntryCount; AprioriIndex++) {
       for (Link = mDiscoveredList.ForwardLink; Link != &mDiscoveredList; Link = Link->ForwardLink) {
         DriverEntry = CR(Link, EFI_SMM_DRIVER_ENTRY, Link, EFI_SMM_DRIVER_ENTRY_SIGNATURE);
-        if (CompareGuid (&DriverEntry->FileName, &AprioriFile[Index]) &&
+        if (CompareGuid (&DriverEntry->FileName, &AprioriFile[AprioriIndex]) &&
             (FvHandle == DriverEntry->FvHandle)) {
           DriverEntry->Dependent = FALSE;
           DriverEntry->Scheduled = TRUE;

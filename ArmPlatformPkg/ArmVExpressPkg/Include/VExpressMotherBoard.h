@@ -1,7 +1,7 @@
 /** @file
 *  Header defining Versatile Express constants (Base addresses, sizes, flags)
 *
-*  Copyright (c) 2011-2013, ARM Limited. All rights reserved.
+*  Copyright (c) 2011-2015, ARM Limited. All rights reserved.
 *
 *  This program and the accompanying materials
 *  are licensed and made available under the terms and conditions of the BSD License
@@ -59,6 +59,8 @@
 #define ARM_VE_SYS_PROC_ID_CORTEX_A9              (UINT32)(0x0CU << 24)
 #define ARM_VE_SYS_PROC_ID_CORTEX_A5              (UINT32)(0x12U << 24)
 #define ARM_VE_SYS_PROC_ID_CORTEX_A15             (UINT32)(0x14U << 24)
+#define ARM_VE_SYS_PROC_ID_CORTEX_A7              (UINT32)(0x18U << 24)
+#define ARM_VE_SYS_PROC_ID_CORTEX_A12             (UINT32)(0x1CU << 24)
 
 // Boot Master Select:
 // 0 = Site 1 boot master
@@ -119,11 +121,20 @@
 //GICH          0x2c004000              0x2c010000
 //GICV          0x2c006000              0x2c020000
 
+#define ARM_FVP_BASE_BOARD_SYS_ID       (0x00200100)
+#define ARM_FVP_FOUNDATION_BOARD_SYS_ID (0x00100100)
+
+#define ARM_FVP_SYS_ID_REV_MASK        (UINT32)(0xFUL   << 28)
+#define ARM_FVP_SYS_ID_HBI_MASK        (UINT32)(0xFFFUL << 16)
+#define ARM_FVP_SYS_ID_VARIANT_MASK    (UINT32)(0xFUL   << 12)
+#define ARM_FVP_SYS_ID_PLAT_MASK       (UINT32)(0xFUL   << 8 )
+#define ARM_FVP_SYS_ID_FPGA_MASK       (UINT32)(0xFFUL  << 0 )
+#define ARM_FVP_GIC_VE_MMAP            0x0
+#define ARM_FVP_GIC_BASE_MMAP          (UINT32)(1 << 12)
+
 // The default SYS_IDs. These can be changed when starting the model.
 #define ARM_RTSM_SYS_ID                (0x225F500)
-#define ARM_FVP_BASE_SYS_ID            (0x00201100)
-#define ARM_FVP_FOUNDATION_SYS_ID      (0x00101100)
-
-#define ARM_FVP_SYS_ID_VARIANT_MASK    (UINT32)(0xFUL << 12)
+#define ARM_FVP_BASE_SYS_ID            (ARM_FVP_BASE_BOARD_SYS_ID | ARM_FVP_GIC_BASE_MMAP)
+#define ARM_FVP_FOUNDATION_SYS_ID      (ARM_FVP_FOUNDATION_BOARD_SYS_ID | ARM_FVP_GIC_BASE_MMAP)
 
 #endif /* VEXPRESSMOTHERBOARD_H_ */

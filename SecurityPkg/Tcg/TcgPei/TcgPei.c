@@ -1,7 +1,7 @@
 /** @file
   Initialize TPM device and measure FVs before handing off control to DXE.
 
-Copyright (c) 2005 - 2013, Intel Corporation. All rights reserved.<BR>
+Copyright (c) 2005 - 2015, Intel Corporation. All rights reserved.<BR>
 This program and the accompanying materials 
 are licensed and made available under the terms and conditions of the BSD License 
 which accompanies this distribution.  The full text of the license may be found at 
@@ -37,6 +37,8 @@ WITHOUT WARRANTIES OR REPRESENTATIONS OF ANY KIND, EITHER EXPRESS OR IMPLIED.
 #include <Library/PcdLib.h>
 #include <Library/PeiServicesTablePointerLib.h>
 #include <Library/BaseLib.h>
+#include <Library/MemoryAllocationLib.h>
+#include <Library/ReportStatusCodeLib.h>
 
 #include "TpmComm.h"
 
@@ -48,10 +50,16 @@ EFI_PEI_PPI_DESCRIPTOR  mTpmInitializedPpiList = {
   NULL
 };
 
-EFI_PLATFORM_FIRMWARE_BLOB mMeasuredBaseFvInfo[FixedPcdGet32 (PcdPeiCoreMaxFvSupported)];
+EFI_PEI_PPI_DESCRIPTOR  mTpmInitializationDonePpiList = {
+  EFI_PEI_PPI_DESCRIPTOR_PPI | EFI_PEI_PPI_DESCRIPTOR_TERMINATE_LIST,
+  &gPeiTpmInitializationDonePpiGuid,
+  NULL
+};
+
+EFI_PLATFORM_FIRMWARE_BLOB *mMeasuredBaseFvInfo;
 UINT32 mMeasuredBaseFvIndex = 0;
 
-EFI_PLATFORM_FIRMWARE_BLOB mMeasuredChildFvInfo[FixedPcdGet32 (PcdPeiCoreMaxFvSupported)];
+EFI_PLATFORM_FIRMWARE_BLOB *mMeasuredChildFvInfo;
 UINT32 mMeasuredChildFvIndex = 0;
 
 EFI_PEI_FIRMWARE_VOLUME_INFO_MEASUREMENT_EXCLUDED_PPI *mMeasurementExcludedFvPpi;
@@ -220,6 +228,10 @@ HashLogExtendEvent (
 {
   EFI_STATUS                        Status;
   VOID                              *HobData;
+  
+  if (GetFirstGuidHob (&gTpmErrorHobGuid) != NULL) {
+    return EFI_DEVICE_ERROR;
+  }
 
   HobData = NULL;
   if (HashDataLen != 0) {
@@ -228,7 +240,9 @@ HashLogExtendEvent (
                HashDataLen,
                &NewEventHdr->Digest
                );
-    ASSERT_EFI_ERROR (Status);
+    if (EFI_ERROR (Status)) {
+      goto Done;
+    }
   }
 
   Status = TpmCommExtend (
@@ -238,20 +252,34 @@ HashLogExtendEvent (
              NewEventHdr->PCRIndex,
              NULL
              );
-  ASSERT_EFI_ERROR (Status);
+  if (EFI_ERROR (Status)) {
+    goto Done;
+  }
 
   HobData = BuildGuidHob (
              &gTcgEventEntryHobGuid,
              sizeof (*NewEventHdr) + NewEventHdr->EventSize
              );
   if (HobData == NULL) {
-    return EFI_OUT_OF_RESOURCES;
+    Status = EFI_OUT_OF_RESOURCES;
+    goto Done;
   }
 
   CopyMem (HobData, NewEventHdr, sizeof (*NewEventHdr));
   HobData = (VOID *) ((UINT8*)HobData + sizeof (*NewEventHdr));
   CopyMem (HobData, NewEventData, NewEventHdr->EventSize);
-  return EFI_SUCCESS;
+
+Done:
+  if ((Status == EFI_DEVICE_ERROR) || (Status == EFI_TIMEOUT)) {
+    DEBUG ((EFI_D_ERROR, "HashLogExtendEvent - %r. Disable TPM.\n", Status));
+    BuildGuidHob (&gTpmErrorHobGuid,0);
+    REPORT_STATUS_CODE (
+      EFI_ERROR_CODE | EFI_ERROR_MINOR,
+      (PcdGet32 (PcdStatusCodeSubClassTpmDevice) | EFI_P_EC_INTERFACE_ERROR)
+      );
+    Status = EFI_DEVICE_ERROR;
+  }
+  return Status;
 }
 
 /**
@@ -364,13 +392,12 @@ MeasureFvImage (
              &TcgEventHdr,
              (UINT8*) &FvBlob
              );
-  ASSERT_EFI_ERROR (Status);
 
   //
   // Add new FV into the measured FV list.
   //
-  ASSERT (mMeasuredBaseFvIndex < FixedPcdGet32 (PcdPeiCoreMaxFvSupported));
-  if (mMeasuredBaseFvIndex < FixedPcdGet32 (PcdPeiCoreMaxFvSupported)) {
+  ASSERT (mMeasuredBaseFvIndex < PcdGet32 (PcdPeiCoreMaxFvSupported));
+  if (mMeasuredBaseFvIndex < PcdGet32 (PcdPeiCoreMaxFvSupported)) {
     mMeasuredBaseFvInfo[mMeasuredBaseFvIndex].BlobBase   = FvBase;
     mMeasuredBaseFvInfo[mMeasuredBaseFvIndex].BlobLength = FvLength;
     mMeasuredBaseFvIndex++;
@@ -461,6 +488,7 @@ FirmwareVolmeInfoPpiNotifyCallback (
   EFI_PEI_FIRMWARE_VOLUME_INFO_PPI  *Fv;
   EFI_STATUS                        Status;
   EFI_PEI_FIRMWARE_VOLUME_PPI       *FvPpi;
+  UINTN                             Index;
 
   Fv = (EFI_PEI_FIRMWARE_VOLUME_INFO_PPI *) Ppi;
 
@@ -483,8 +511,16 @@ FirmwareVolmeInfoPpiNotifyCallback (
   //
   if (Fv->ParentFvName != NULL || Fv->ParentFileName != NULL ) {
     
-    ASSERT (mMeasuredChildFvIndex < FixedPcdGet32 (PcdPeiCoreMaxFvSupported));
-    if (mMeasuredChildFvIndex < FixedPcdGet32 (PcdPeiCoreMaxFvSupported)) {
+    ASSERT (mMeasuredChildFvIndex < PcdGet32 (PcdPeiCoreMaxFvSupported));
+    if (mMeasuredChildFvIndex < PcdGet32 (PcdPeiCoreMaxFvSupported)) {
+      //
+      // Check whether FV is in the measured child FV list.
+      //
+      for (Index = 0; Index < mMeasuredChildFvIndex; Index++) {
+        if (mMeasuredChildFvInfo[Index].BlobBase == (EFI_PHYSICAL_ADDRESS) (UINTN) Fv->FvInfo) {
+          return EFI_SUCCESS;
+        }
+      }
       mMeasuredChildFvInfo[mMeasuredChildFvIndex].BlobBase   = (EFI_PHYSICAL_ADDRESS) (UINTN) Fv->FvInfo;
       mMeasuredChildFvInfo[mMeasuredChildFvIndex].BlobLength = Fv->FvInfoSize;
       mMeasuredChildFvIndex++;
@@ -658,6 +694,11 @@ PeimEntryMP (
                );
   // Do not check status, because it is optional
 
+  mMeasuredBaseFvInfo  = (EFI_PLATFORM_FIRMWARE_BLOB *) AllocateZeroPool (sizeof (EFI_PLATFORM_FIRMWARE_BLOB) * PcdGet32 (PcdPeiCoreMaxFvSupported));
+  ASSERT (mMeasuredBaseFvInfo != NULL);
+  mMeasuredChildFvInfo = (EFI_PLATFORM_FIRMWARE_BLOB *) AllocateZeroPool (sizeof (EFI_PLATFORM_FIRMWARE_BLOB) * PcdGet32 (PcdPeiCoreMaxFvSupported));
+  ASSERT (mMeasuredChildFvInfo != NULL);
+
   TpmHandle = (TIS_TPM_HANDLE)(UINTN)TPM_BASE_ADDRESS;
   Status = TisPcRequestUseTpm ((TIS_PC_REGISTERS_PTR)TpmHandle);
   if (EFI_ERROR (Status)) {
@@ -667,7 +708,6 @@ PeimEntryMP (
   if (IsTpmUsable (PeiServices, TpmHandle)) {
     if (PcdGet8 (PcdTpmScrtmPolicy) == 1) {
       Status = MeasureCRTMVersion (PeiServices, TpmHandle);
-      ASSERT_EFI_ERROR (Status);
     }
 
     Status = MeasureMainBios (PeiServices, TpmHandle);
@@ -703,6 +743,7 @@ PeimEntryMA (
   )
 {
   EFI_STATUS                        Status;
+  EFI_STATUS                        Status2;
   EFI_BOOT_MODE                     BootMode;
   TIS_TPM_HANDLE                    TpmHandle;
 
@@ -711,8 +752,9 @@ PeimEntryMA (
     return EFI_UNSUPPORTED;
   }
 
-  if (PcdGetBool (PcdHideTpmSupport) && PcdGetBool (PcdHideTpm)) {
-    return EFI_UNSUPPORTED;
+  if (GetFirstGuidHob (&gTpmErrorHobGuid) != NULL) {
+    DEBUG ((EFI_D_ERROR, "TPM error!\n"));
+    return EFI_DEVICE_ERROR;
   }
 
   //
@@ -738,13 +780,13 @@ PeimEntryMA (
     Status = TisPcRequestUseTpm ((TIS_PC_REGISTERS_PTR)TpmHandle);
     if (EFI_ERROR (Status)) {
       DEBUG ((DEBUG_ERROR, "TPM not detected!\n"));
-      return Status;
+      goto Done;
     }
 
     if (PcdGet8 (PcdTpmInitializationPolicy) == 1) {
       Status = TpmCommStartup ((EFI_PEI_SERVICES**)PeiServices, TpmHandle, BootMode);
       if (EFI_ERROR (Status) ) {
-        return Status;
+        goto Done;
       }
     }
 
@@ -754,20 +796,37 @@ PeimEntryMA (
     if (BootMode != BOOT_ON_S3_RESUME) {
       Status = TpmCommContinueSelfTest ((EFI_PEI_SERVICES**)PeiServices, TpmHandle);
       if (EFI_ERROR (Status)) {
-        return Status;
+        goto Done;
       }
     }
 
+    //
+    // Only intall TpmInitializedPpi on success
+    //
     Status = PeiServicesInstallPpi (&mTpmInitializedPpiList);
     ASSERT_EFI_ERROR (Status);
   }
 
   if (mImageInMemory) {
     Status = PeimEntryMP ((EFI_PEI_SERVICES**)PeiServices);
-    if (EFI_ERROR (Status)) {
-      return Status;
-    }
+    return Status;
   }
+
+Done:
+  if (EFI_ERROR (Status)) {
+    DEBUG ((EFI_D_ERROR, "TPM error! Build Hob\n"));
+    BuildGuidHob (&gTpmErrorHobGuid,0);
+    REPORT_STATUS_CODE (
+      EFI_ERROR_CODE | EFI_ERROR_MINOR,
+      (PcdGet32 (PcdStatusCodeSubClassTpmDevice) | EFI_P_EC_INTERFACE_ERROR)
+      );
+  }
+  //
+  // Always intall TpmInitializationDonePpi no matter success or fail.
+  // Other driver can know TPM initialization state by TpmInitializedPpi.
+  //
+  Status2 = PeiServicesInstallPpi (&mTpmInitializationDonePpiList);
+  ASSERT_EFI_ERROR (Status2);
 
   return Status;
 }

@@ -1,7 +1,7 @@
 /** @file
   Platform PEI module include file.
 
-  Copyright (c) 2006 - 2011, Intel Corporation. All rights reserved.<BR>
+  Copyright (c) 2006 - 2014, Intel Corporation. All rights reserved.<BR>
   This program and the accompanying materials
   are licensed and made available under the terms and conditions of the BSD License
   which accompanies this distribution.  The full text of the license may be found at
@@ -59,13 +59,23 @@ AddUntestedMemoryRangeHob (
   EFI_PHYSICAL_ADDRESS        MemoryLimit
   );
 
+VOID
+AddressWidthInitialization (
+  VOID
+  );
+
 EFI_STATUS
 PublishPeiMemory (
   VOID
   );
 
-EFI_PHYSICAL_ADDRESS
-MemDetect (
+UINT32
+GetSystemMemorySizeBelow4gb (
+  VOID
+  );
+
+VOID
+InitializeRamRegions (
   VOID
   );
 
@@ -76,18 +86,25 @@ PeiFvInitialization (
 
 EFI_STATUS
 InitializeXen (
-  UINT32 XenLeaf
+  VOID
   );
 
-UINT32
+BOOLEAN
 XenDetect (
   VOID
   );
 
-EFI_STATUS
-XenGetE820Map (
-  EFI_E820_ENTRY64 **Entries,
-  UINT32 *Count
+extern BOOLEAN mXen;
+
+VOID
+XenPublishRamRegions (
+  VOID
   );
+
+extern EFI_BOOT_MODE mBootMode;
+
+extern BOOLEAN mS3Supported;
+
+extern UINT8 mPhysMemAddressWidth;
 
 #endif // _PLATFORM_PEI_H_INCLUDED_

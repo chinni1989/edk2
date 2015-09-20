@@ -20,8 +20,6 @@ formset
   guid     = ISCSI_CONFIG_GUID,
   title    = STRING_TOKEN(STR_ISCSI_CONFIG_FORM_TITLE),
   help     = STRING_TOKEN(STR_ISCSI_CONFIG_FORM_HELP),
-  class    = EFI_NETWORK_DEVICE_CLASS,
-  subclass = 0x03,
 
   varstore ISCSI_CONFIG_IFR_NVDATA,
     varid = CONFIGURATION_VARSTORE_ID,
@@ -88,14 +86,12 @@ formset
     text
       help   = STRING_TOKEN (STR_SAVE_AND_EXIT),
       text   = STRING_TOKEN (STR_SAVE_AND_EXIT),
-        text   = STRING_TOKEN (STR_SAVE_AND_EXIT),
       flags  = INTERACTIVE,
       key    = KEY_SAVE_ORDER_CHANGES;
 
     text
       help   = STRING_TOKEN (STR_NO_SAVE_AND_EXIT),
       text   = STRING_TOKEN (STR_NO_SAVE_AND_EXIT),
-        text   = STRING_TOKEN (STR_NO_SAVE_AND_EXIT),
       flags  = INTERACTIVE,
       key    = KEY_IGNORE_ORDER_CHANGES;
   endform;
@@ -109,14 +105,12 @@ formset
     text
       help   = STRING_TOKEN (STR_SAVE_AND_EXIT),
       text   = STRING_TOKEN (STR_SAVE_AND_EXIT),
-        text   = STRING_TOKEN (STR_SAVE_AND_EXIT),
       flags  = INTERACTIVE,
       key    = KEY_SAVE_DELETE_ATTEMPT;
 
     text
       help   = STRING_TOKEN (STR_NO_SAVE_AND_EXIT),
       text   = STRING_TOKEN (STR_NO_SAVE_AND_EXIT),
-        text   = STRING_TOKEN (STR_NO_SAVE_AND_EXIT),
       flags  = INTERACTIVE,
       key    = KEY_IGNORE_DELETE_ATTEMPT;
   endform;    
@@ -353,7 +347,6 @@ formset
     text
       help   = STRING_TOKEN (STR_SAVE_CHANGES_HELP),
       text   = STRING_TOKEN (STR_SAVE_CHANGES),
-        text   = STRING_TOKEN (STR_SAVE_CHANGES),
       flags  = INTERACTIVE,
       key    = KEY_SAVE_ATTEMPT_CONFIG;
       

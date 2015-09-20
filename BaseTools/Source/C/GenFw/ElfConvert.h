@@ -1,6 +1,7 @@
 /** @file
+Header file for Elf convert solution
 
-Copyright (c) 2010 - 2011, Intel Corporation. All rights reserved.<BR>
+Copyright (c) 2010 - 2014, Intel Corporation. All rights reserved.<BR>
 
 This program and the accompanying materials are licensed and made available 
 under the terms and conditions of the BSD License which accompanies this 
@@ -33,6 +34,7 @@ extern UINT32 mOutImageType;
 // Common EFI specific data.
 //
 #define ELF_HII_SECTION_NAME ".hii"
+#define MAX_COFF_ALIGNMENT 0x10000
 
 //
 // Filter Types

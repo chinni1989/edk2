@@ -1,7 +1,7 @@
 /** @file
   Main file for ls shell level 2 function.
 
-  Copyright (c) 2013 Hewlett-Packard Development Company, L.P.
+  (C) Copyright 2013-2015 Hewlett-Packard Development Company, L.P.<BR>
   Copyright (c) 2009 - 2014, Intel Corporation. All rights reserved.<BR>
   This program and the accompanying materials
   are licensed and made available under the terms and conditions of the BSD License
@@ -330,8 +330,9 @@ PrintNonSfoFooter(
   @param[in] Attribs        List of required Attribute for display.
                             If 0 then all non-system and non-hidden files will be printed.
   @param[in] Sfo            TRUE to use Standard Format Output, FALSE otherwise
-  @param[in] Path           String with starting path.
-  @param[in] First          TRUE for the original and FALSE for any recursion spawned instances.
+  @param[in] RootPath       String with starting path to search in.
+  @param[in] SearchString   String with search string.
+  @param[in] Found          Set to TRUE, if anyone were found.
   @param[in] Count          The count of bits enabled in Attribs.
   @param[in] TimeZone       The current time zone offset.
 
@@ -343,8 +344,9 @@ PrintLsOutput(
   IN CONST BOOLEAN Rec,
   IN CONST UINT64  Attribs,
   IN CONST BOOLEAN Sfo,
-  IN CONST CHAR16  *Path,
-  IN CONST BOOLEAN First,
+  IN CONST CHAR16  *RootPath,
+  IN CONST CHAR16  *SearchString,
+  IN       BOOLEAN *Found,
   IN CONST UINTN   Count,
   IN CONST INT16   TimeZone
   )
@@ -356,10 +358,12 @@ PrintLsOutput(
   UINT64                FileCount;
   UINT64                DirCount;
   UINT64                FileSize;
-  CHAR16                *DirectoryName;
   UINTN                 LongestPath;
   CHAR16                *CorrectedPath;
+  BOOLEAN               FoundOne;
+  BOOLEAN               HeaderPrinted;
 
+  HeaderPrinted = FALSE;
   FileCount     = 0;
   DirCount      = 0;
   FileSize      = 0;
@@ -368,87 +372,106 @@ PrintLsOutput(
   LongestPath   = 0;
   CorrectedPath = NULL;
 
-  CorrectedPath = StrnCatGrow(&CorrectedPath, NULL, Path, 0);
+  if (Found != NULL) {
+    FoundOne = *Found;
+  } else {
+    FoundOne = FALSE;
+  }
+
+  CorrectedPath = StrnCatGrow(&CorrectedPath, &LongestPath, RootPath,     0);
+  if (CorrectedPath == NULL) {
+    return SHELL_OUT_OF_RESOURCES;
+  }
+  if (CorrectedPath[StrLen(CorrectedPath)-1] != L'\\'
+    &&CorrectedPath[StrLen(CorrectedPath)-1] != L'/') {
+    CorrectedPath = StrnCatGrow(&CorrectedPath, &LongestPath, L"\\",     0);
+  }
+  CorrectedPath = StrnCatGrow(&CorrectedPath, &LongestPath, SearchString, 0);
   if (CorrectedPath == NULL) {
     return (SHELL_OUT_OF_RESOURCES);
   }
 
   PathCleanUpDirectories(CorrectedPath);
 
-  if (!Sfo) {
-    PrintNonSfoHeader(CorrectedPath);
-  }
-
   Status = ShellOpenFileMetaArg((CHAR16*)CorrectedPath, EFI_FILE_MODE_READ, &ListHead);
-  if (EFI_ERROR(Status)) {
-    SHELL_FREE_NON_NULL(CorrectedPath);
-    if(Status == EFI_NOT_FOUND){
-      return (SHELL_NOT_FOUND);
+  if (!EFI_ERROR(Status)) {
+    if (ListHead == NULL || IsListEmpty(&ListHead->Link)) {
+      SHELL_FREE_NON_NULL(CorrectedPath);
+      return (SHELL_SUCCESS);
     }
-    return (SHELL_DEVICE_ERROR);
-  }
-  if (ListHead == NULL || IsListEmpty(&ListHead->Link)) {
-    SHELL_FREE_NON_NULL(CorrectedPath);
-    //
-    // On the first one only we expect to find something...
-    // do we find the . and .. directories otherwise?
-    //
-    if (First) {
-      return (SHELL_NOT_FOUND);
-    }
-    return (SHELL_SUCCESS);
-  }
 
-  if (Sfo && First) {
-    PrintSfoVolumeInfoTableEntry(ListHead);
-  }
-
-  for ( Node = (EFI_SHELL_FILE_INFO *)GetFirstNode(&ListHead->Link)
-      ; !IsNull(&ListHead->Link, &Node->Link)
-      ; Node = (EFI_SHELL_FILE_INFO *)GetNextNode(&ListHead->Link, &Node->Link)
-      ){
-    ASSERT(Node != NULL);
-    if (LongestPath < StrSize(Node->FullName)) {
-      LongestPath = StrSize(Node->FullName);
+    if (Sfo && Found == NULL) {
+      PrintSfoVolumeInfoTableEntry(ListHead);
     }
-    ASSERT(Node->Info != NULL);
-    ASSERT((Node->Info->Attribute & EFI_FILE_VALID_ATTR) == Node->Info->Attribute);
-    if (Attribs == 0) {
-      //
-      // NOT system & NOT hidden
-      //
-      if ( (Node->Info->Attribute & EFI_FILE_SYSTEM)
-        || (Node->Info->Attribute & EFI_FILE_HIDDEN)
-       ){
-        continue;
+
+    for ( Node = (EFI_SHELL_FILE_INFO *)GetFirstNode(&ListHead->Link), LongestPath = 0
+        ; !IsNull(&ListHead->Link, &Node->Link)
+        ; Node = (EFI_SHELL_FILE_INFO *)GetNextNode(&ListHead->Link, &Node->Link)
+        ){
+      if (ShellGetExecutionBreakFlag ()) {
+        ShellStatus = SHELL_ABORTED;
+        break;
       }
-    } else if ((Attribs != EFI_FILE_VALID_ATTR) ||
-               (Count == 5)) {
-      //
-      // Only matches the bits which "Attribs" contains, not
-      // all files/directories with any of the bits.
-      // Count == 5 is used to tell the difference between a user
-      // specifying all bits (EX: -arhsda) and just specifying
-      // -a (means display all files with any attribute).
-      //
-      if ( (Node->Info->Attribute & Attribs) != Attribs) {
-        continue;
+      ASSERT(Node != NULL);
+      if (LongestPath < StrSize(Node->FullName)) {
+        LongestPath = StrSize(Node->FullName);
       }
+      ASSERT(Node->Info != NULL);
+      ASSERT((Node->Info->Attribute & EFI_FILE_VALID_ATTR) == Node->Info->Attribute);
+      if (Attribs == 0) {
+        //
+        // NOT system & NOT hidden
+        //
+        if ( (Node->Info->Attribute & EFI_FILE_SYSTEM)
+          || (Node->Info->Attribute & EFI_FILE_HIDDEN)
+         ){
+          continue;
+        }
+      } else if ((Attribs != EFI_FILE_VALID_ATTR) ||
+                 (Count == 5)) {
+        //
+        // Only matches the bits which "Attribs" contains, not
+        // all files/directories with any of the bits.
+        // Count == 5 is used to tell the difference between a user
+        // specifying all bits (EX: -arhsda) and just specifying
+        // -a (means display all files with any attribute).
+        //
+        if ( (Node->Info->Attribute & Attribs) != Attribs) {
+          continue;
+        }
+      }
+
+      if (!Sfo && !HeaderPrinted) {
+        PrintNonSfoHeader(CorrectedPath);
+      }
+      PrintFileInformation(Sfo, Node, &FileCount, &FileSize, &DirCount);
+      FoundOne = TRUE;
+      HeaderPrinted = TRUE;
     }
 
-    PrintFileInformation(Sfo, Node, &FileCount, &FileSize, &DirCount);
+    if (!Sfo && ShellStatus != SHELL_ABORTED) {
+      PrintNonSfoFooter(FileCount, FileSize, DirCount);
+    }
   }
 
-  if (!Sfo) {
-    PrintNonSfoFooter(FileCount, FileSize, DirCount);
-  }
-
-  if (Rec){
-    DirectoryName = AllocateZeroPool(LongestPath + 2*sizeof(CHAR16));
-    if (DirectoryName == NULL) {
-      ShellPrintHiiEx(-1, -1, NULL, STRING_TOKEN (STR_GEN_NO_MEM), gShellLevel2HiiHandle);
-      ShellStatus = SHELL_OUT_OF_RESOURCES;
-    } else {
+  if (Rec && ShellStatus != SHELL_ABORTED) {
+    //
+    // Re-Open all the files under the starting path for directories that didnt necessarily match our file filter
+    //
+    ShellCloseFileMetaArg(&ListHead);
+    CorrectedPath[0] = CHAR_NULL;
+    CorrectedPath = StrnCatGrow(&CorrectedPath, &LongestPath, RootPath, 0);
+    if (CorrectedPath == NULL) {
+      return SHELL_OUT_OF_RESOURCES;
+    }
+    if (CorrectedPath[StrLen(CorrectedPath)-1] != L'\\'
+      &&CorrectedPath[StrLen(CorrectedPath)-1] != L'/') {
+      CorrectedPath = StrnCatGrow(&CorrectedPath, &LongestPath, L"\\",     0);
+    }
+    CorrectedPath = StrnCatGrow(&CorrectedPath, &LongestPath, L"*",     0);
+    Status = ShellOpenFileMetaArg((CHAR16*)CorrectedPath, EFI_FILE_MODE_READ, &ListHead);
+   
+    if (!EFI_ERROR(Status)) {
       for ( Node = (EFI_SHELL_FILE_INFO *)GetFirstNode(&ListHead->Link)
           ; !IsNull(&ListHead->Link, &Node->Link) && ShellStatus == SHELL_SUCCESS
           ; Node = (EFI_SHELL_FILE_INFO *)GetNextNode(&ListHead->Link, &Node->Link)
@@ -465,24 +488,38 @@ PrintLsOutput(
           && StrCmp(Node->FileName, L".") != 0
           && StrCmp(Node->FileName, L"..") != 0
          ){
-          StrCpy(DirectoryName, Node->FullName);
-          StrCat(DirectoryName, L"\\*");
           ShellStatus = PrintLsOutput(
             Rec,
             Attribs,
             Sfo,
-            DirectoryName,
-            FALSE,
+            Node->FullName,
+            SearchString,
+            &FoundOne,
             Count,
             TimeZone);
+            
+          //
+          // Since it's running recursively, we have to break immediately when returned SHELL_ABORTED
+          //
+          if (ShellStatus == SHELL_ABORTED) {
+            break;
+          }
         }
       }
-      FreePool(DirectoryName);
     }
   }
 
-  FreePool(CorrectedPath);
+  SHELL_FREE_NON_NULL(CorrectedPath);
   ShellCloseFileMetaArg(&ListHead);
+
+  if (Found == NULL && !FoundOne) {
+    return (SHELL_NOT_FOUND);
+  }
+
+  if (Found != NULL) {
+    *Found = FoundOne;
+  }
+
   return (ShellStatus);
 }
 
@@ -518,7 +555,7 @@ ShellCommandRunLs (
   CHAR16        *FullPath;
   UINTN         Size;
   EFI_TIME      TheTime;
-  BOOLEAN       SfoMode;
+  CHAR16        *SearchString;
 
   Size                = 0;
   FullPath            = NULL;
@@ -527,6 +564,7 @@ ShellCommandRunLs (
   ShellStatus         = SHELL_SUCCESS;
   RequiredAttributes  = 0;
   PathName            = NULL;
+  SearchString        = NULL;
   CurDir              = NULL;
   Count               = 0;
 
@@ -548,7 +586,7 @@ ShellCommandRunLs (
   Status = ShellCommandLineParse (LsParamList, &Package, &ProblemParam, TRUE);
   if (EFI_ERROR(Status)) {
     if (Status == EFI_VOLUME_CORRUPTED && ProblemParam != NULL) {
-      ShellPrintHiiEx(-1, -1, NULL, STRING_TOKEN (STR_GEN_PROBLEM), gShellLevel2HiiHandle, ProblemParam);
+      ShellPrintHiiEx(-1, -1, NULL, STRING_TOKEN (STR_GEN_PROBLEM), gShellLevel2HiiHandle, L"ls", ProblemParam);  
       FreePool(ProblemParam);
       ShellStatus = SHELL_INVALID_PARAMETER;
     } else {
@@ -563,7 +601,7 @@ ShellCommandRunLs (
     }
 
     if (ShellCommandLineGetCount(Package) > 2) {
-      ShellPrintHiiEx(-1, -1, NULL, STRING_TOKEN (STR_GEN_TOO_MANY), gShellLevel2HiiHandle);
+      ShellPrintHiiEx(-1, -1, NULL, STRING_TOKEN (STR_GEN_TOO_MANY), gShellLevel2HiiHandle, L"ls");  
       ShellStatus = SHELL_INVALID_PARAMETER;
     } else {
       //
@@ -601,7 +639,7 @@ ShellCommandRunLs (
               Count++;
               continue;
             default:
-              ShellPrintHiiEx(-1, -1, NULL, STRING_TOKEN (STR_GEN_ATTRIBUTE), gShellLevel2HiiHandle, ShellCommandLineGetValue(Package, L"-a"));
+              ShellPrintHiiEx(-1, -1, NULL, STRING_TOKEN (STR_GEN_ATTRIBUTE), gShellLevel2HiiHandle, L"ls", ShellCommandLineGetValue(Package, L"-a"));  
               ShellStatus = SHELL_INVALID_PARAMETER;
               break;
           } // switch
@@ -616,80 +654,100 @@ ShellCommandRunLs (
       if (ShellStatus == SHELL_SUCCESS) {
         PathName = ShellCommandLineGetRawValue(Package, 1);
         if (PathName == NULL) {
+          //
+          // Nothing specified... must start from current directory
+          //
           CurDir = gEfiShellProtocol->GetCurDir(NULL);
           if (CurDir == NULL) {
             ShellStatus = SHELL_NOT_FOUND;
-            ShellPrintHiiEx(-1, -1, NULL, STRING_TOKEN (STR_GEN_NO_CWD), gShellLevel2HiiHandle);
+            ShellPrintHiiEx(-1, -1, NULL, STRING_TOKEN (STR_GEN_NO_CWD), gShellLevel2HiiHandle, L"ls");  
           }
-        }
-        if (PathName != NULL) {
+          //
+          // Copy to the 2 strings for starting path and file search string
+          //
+          ASSERT(SearchString == NULL);
+          ASSERT(FullPath == NULL);
+          StrnCatGrow(&SearchString, NULL, L"*", 0);
+          StrnCatGrow(&FullPath, NULL, CurDir, 0);
+        } else {
           if (StrStr(PathName, L":") == NULL && gEfiShellProtocol->GetCurDir(NULL) == NULL) {
+            //
+            // If we got something and it doesnt have a fully qualified path, then we needed to have a CWD.
+            //
             ShellStatus = SHELL_NOT_FOUND;
-            ShellPrintHiiEx(-1, -1, NULL, STRING_TOKEN (STR_GEN_NO_CWD), gShellLevel2HiiHandle);
+            ShellPrintHiiEx(-1, -1, NULL, STRING_TOKEN (STR_GEN_NO_CWD), gShellLevel2HiiHandle, L"ls");  
           } else {
+            //
+            // We got a valid fully qualified path or we have a CWD
+            //
             ASSERT((FullPath == NULL && Size == 0) || (FullPath != NULL));
-            StrnCatGrow(&FullPath, &Size, PathName, 0);
-            if  (ShellIsDirectory(PathName) == EFI_SUCCESS) {
-              if (PathName[StrLen (PathName) - 1] == '\\') {
-                //
-                // For path ending with '\', just append '*'.
-                //
-                StrnCatGrow (&FullPath, &Size, L"*", 0);
-              } else if (PathName[StrLen (PathName) - 1] == '*') {
-                //
-                // For path ending with '*', do nothing.
-                //
-              } else {
-                //
-                // Otherwise, append '\*' to directory name.
-                //
-                StrnCatGrow (&FullPath, &Size, L"\\*", 0);
+            if (StrStr(PathName, L":") == NULL) {
+              StrnCatGrow(&FullPath, &Size, gEfiShellProtocol->GetCurDir(NULL), 0);
+              if (FullPath == NULL) {
+                ShellCommandLineFreeVarList (Package);
+                return SHELL_OUT_OF_RESOURCES;
               }
             }
+            StrnCatGrow(&FullPath, &Size, PathName, 0);
+            if (FullPath == NULL) {
+                ShellCommandLineFreeVarList (Package);
+                return SHELL_OUT_OF_RESOURCES;
+            }
+               
+            if  (ShellIsDirectory(PathName) == EFI_SUCCESS) {
+              //
+              // is listing ends with a directory, then we list all files in that directory
+              //
+              StrnCatGrow(&SearchString, NULL, L"*", 0);
+            } else {
+              //
+              // must split off the search part that applies to files from the end of the directory part
+              //
+              for (StrnCatGrow(&SearchString, NULL, PathName, 0)
+                ; SearchString != NULL && StrStr(SearchString, L"\\") != NULL
+                ; CopyMem(SearchString, StrStr(SearchString, L"\\") + 1, 1 + StrSize(StrStr(SearchString, L"\\") + 1))) ;
+              FullPath[StrLen(FullPath) - StrLen(SearchString)] = CHAR_NULL;
+            }
           }
-        } else {
-          ASSERT(FullPath == NULL);
-          StrnCatGrow(&FullPath, NULL, L"*", 0);
         }
         Status = gRT->GetTime(&TheTime, NULL);
         if (EFI_ERROR(Status)) {
-          ShellPrintHiiEx(-1, -1, NULL, STRING_TOKEN (STR_GEN_UEFI_FUNC_WARN), gShellLevel2HiiHandle, L"gRT->GetTime", Status);
+          ShellPrintHiiEx(-1, -1, NULL, STRING_TOKEN (STR_GEN_UEFI_FUNC_WARN), gShellLevel2HiiHandle, L"ls", L"gRT->GetTime", Status);  
           TheTime.TimeZone = EFI_UNSPECIFIED_TIMEZONE;
         }
 
-        SfoMode = ShellCommandLineGetFlag(Package, L"-sfo");
         if (ShellStatus == SHELL_SUCCESS) {
           ShellStatus = PrintLsOutput(
             ShellCommandLineGetFlag(Package, L"-r"),
             RequiredAttributes,
-            SfoMode,
+            ShellCommandLineGetFlag(Package, L"-sfo"),
             FullPath,
-            TRUE,
+            SearchString,
+            NULL,
             Count,
-            (INT16)(TheTime.TimeZone==EFI_UNSPECIFIED_TIMEZONE?0:TheTime.TimeZone)
+            TheTime.TimeZone
            );
           if (ShellStatus == SHELL_NOT_FOUND) {
-            ShellPrintHiiEx(-1, -1, NULL, STRING_TOKEN (STR_LS_FILE_NOT_FOUND), gShellLevel2HiiHandle);
+            ShellPrintHiiEx(-1, -1, NULL, STRING_TOKEN (STR_LS_FILE_NOT_FOUND), gShellLevel2HiiHandle, L"ls", FullPath);  
           } else if (ShellStatus == SHELL_INVALID_PARAMETER) {
-            ShellPrintHiiEx(-1, -1, NULL, STRING_TOKEN (STR_GEN_PARAM_INV), gShellLevel2HiiHandle);
+            ShellPrintHiiEx(-1, -1, NULL, STRING_TOKEN (STR_GEN_PARAM_INV), gShellLevel2HiiHandle, L"ls", FullPath);  
           } else if (ShellStatus == SHELL_ABORTED) {
             //
             // Ignore aborting.
             //
           } else if (ShellStatus != SHELL_SUCCESS) {
-            ShellPrintHiiEx(-1, -1, NULL, STRING_TOKEN (STR_GEN_PARAM_INV), gShellLevel2HiiHandle);
+            ShellPrintHiiEx(-1, -1, NULL, STRING_TOKEN (STR_GEN_PARAM_INV), gShellLevel2HiiHandle, L"ls", FullPath);  
           }
         }
       }
     }
   }
 
-  if (FullPath != NULL) {
-    FreePool(FullPath);
-  }
   //
-  // free the command line package
+  // Free memory allocated
   //
+  SHELL_FREE_NON_NULL(SearchString);
+  SHELL_FREE_NON_NULL(FullPath);
   ShellCommandLineFreeVarList (Package);
 
   return (ShellStatus);

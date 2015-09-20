@@ -1,7 +1,8 @@
 /** @file
   The driver binding and service binding protocol for IP6 driver.
 
-  Copyright (c) 2009 - 2013, Intel Corporation. All rights reserved.<BR>
+  Copyright (c) 2009 - 2014, Intel Corporation. All rights reserved.<BR>
+  (C) Copyright 2015 Hewlett-Packard Development Company, L.P.<BR>
 
   This program and the accompanying materials
   are licensed and made available under the terms and conditions of the BSD License
@@ -23,6 +24,32 @@ EFI_DRIVER_BINDING_PROTOCOL gIp6DriverBinding = {
   NULL,
   NULL
 };
+
+BOOLEAN  mIpSec2Installed = FALSE;
+
+/**
+   Callback function for IpSec2 Protocol install.
+
+   @param[in] Event           Event whose notification function is being invoked
+   @param[in] Context         Pointer to the notification function's context
+
+**/
+VOID
+EFIAPI
+IpSec2InstalledCallback (
+  IN EFI_EVENT  Event,
+  IN VOID       *Context
+  )
+{
+  //
+  // Close the event so it does not get called again.
+  //
+  gBS->CloseEvent (Event);
+
+  mIpSec2Installed = TRUE;
+
+  return;
+}
 
 /**
   This is the declaration of an EFI image entry point. This entry point is
@@ -46,6 +73,16 @@ Ip6DriverEntryPoint (
   IN EFI_SYSTEM_TABLE       *SystemTable
   )
 {
+  VOID            *Registration;
+
+  EfiCreateProtocolNotifyEvent (
+    &gEfiIpSec2ProtocolGuid,
+    TPL_CALLBACK,
+    IpSec2InstalledCallback,
+    NULL,
+    &Registration
+    );
+
   return EfiLibInstallDriverBindingComponentName2 (
            ImageHandle,
            SystemTable,
@@ -573,8 +610,6 @@ Ip6DriverBindingStart (
     //
     mIp6Id = NET_RANDOM (NetRandomInitSeed ());
 
-    Ip6SetVariableData (IpSb);
-
     return EFI_SUCCESS;
   }
 
@@ -700,11 +735,6 @@ Ip6DriverBindingStop (
   } else if (IsListEmpty (&IpSb->Children)) {
     State           = IpSb->State;
     IpSb->State     = IP6_SERVICE_DESTROY;
-
-    //
-    // Clear the variable data.
-    //
-    Ip6ClearVariableData (IpSb);
 
     Status = Ip6CleanService (IpSb);
     if (EFI_ERROR (Status)) {
@@ -943,9 +973,6 @@ Ip6ServiceBindingDestroyChild (
   }
 
   Status = Ip6CleanProtocol (IpInstance);
-
-  Ip6SetVariableData (IpSb);
-
   if (EFI_ERROR (Status)) {
     gBS->InstallMultipleProtocolInterfaces (
            &ChildHandle,

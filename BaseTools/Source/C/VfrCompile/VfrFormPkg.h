@@ -2,7 +2,7 @@
   
   The definition of CFormPkg's member function
 
-Copyright (c) 2004 - 2013, Intel Corporation. All rights reserved.<BR>
+Copyright (c) 2004 - 2015, Intel Corporation. All rights reserved.<BR>
 This program and the accompanying materials                          
 are licensed and made available under the terms and conditions of the BSD License         
 which accompanies this distribution.  The full text of the license may be found at        
@@ -124,7 +124,7 @@ private:
   SPendingAssign      *PendingAssignList;
 
 public:
-  CFormPkg (IN UINT32 BufferSize);
+  CFormPkg (IN UINT32 BufferSize = 4096);
   ~CFormPkg ();
 
   CHAR8             * IfrBinBufferGet (IN UINT32);
@@ -310,6 +310,10 @@ public:
   VOID UpdateHeader (IN EFI_IFR_OP_HEADER *Header) {
     mHeader = Header;
   }
+
+  UINT8 GetOpCode () {
+    return mHeader->OpCode;
+  }
 };
 
 extern UINT8 gScopeCount;
@@ -418,7 +422,11 @@ public:
     if (_FLAG_TEST_AND_CLEAR (Flags, EFI_IFR_FLAG_RESET_REQUIRED)) {
       mHeader->Flags |= EFI_IFR_FLAG_RESET_REQUIRED;
     }
-    
+
+    if (_FLAG_TEST_AND_CLEAR (Flags, EFI_IFR_FLAG_RECONNECT_REQUIRED)) {
+      mHeader->Flags |= EFI_IFR_FLAG_RECONNECT_REQUIRED;
+    }
+
     //
     //  Set LateCheck Flag to compatible for framework flag
     //  but it uses 0x20 as its flag, if in the future UEFI may take this flag
@@ -595,6 +603,8 @@ public:
 
 static CIfrQuestionHeader *gCurrentQuestion  = NULL;
 static CIfrMinMaxStepData *gCurrentMinMaxData = NULL;
+static BOOLEAN            gIsOrderedList = FALSE;
+static BOOLEAN            gIsStringOp = FALSE;
 
 /*
  * The definition of all of the UEFI IFR Objects
@@ -1343,7 +1353,7 @@ public:
     UpdateCIfrMinMaxStepData(&mNumeric->data);
   }
 
-  EFI_VFR_RETURN_CODE SetFlags (IN UINT8 HFlags, IN UINT8 LFlags) {
+  EFI_VFR_RETURN_CODE SetFlags (IN UINT8 HFlags, IN UINT8 LFlags, BOOLEAN DisplaySettingsSpecified = FALSE) {
     EFI_VFR_RETURN_CODE Ret;
 
     Ret = CIfrQuestionHeader::SetFlags (HFlags);
@@ -1351,12 +1361,16 @@ public:
       return Ret;
     }
 
-    if (LFlags & EFI_IFR_DISPLAY) {
-      mNumeric->Flags = LFlags;
-    } else {
+    if (DisplaySettingsSpecified == FALSE) {
       mNumeric->Flags = LFlags | EFI_IFR_DISPLAY_UINT_DEC;
+    } else {
+      mNumeric->Flags = LFlags;
     }
     return VFR_RETURN_SUCCESS;
+  }
+
+  UINT8 GetNumericFlags () {
+    return mNumeric->Flags;
   }
 };
 
@@ -1710,6 +1724,7 @@ public:
   }
 
   EFI_VFR_RETURN_CODE SetFlags (IN UINT8 LFlags) {
+    mOneOfOption->Flags = 0;
     if (_FLAG_TEST_AND_CLEAR (LFlags, EFI_IFR_OPTION_DEFAULT)) {
       mOneOfOption->Flags |= EFI_IFR_OPTION_DEFAULT;
     }
@@ -2651,6 +2666,21 @@ public:
   ) : CIfrObj (EFI_IFR_MATCH_OP, (CHAR8 **)&mMatch),
       CIfrOpHeader (EFI_IFR_MATCH_OP, &mMatch->Header) {
     SetLineNo (LineNo);
+  }
+};
+
+class CIfrMatch2 : public CIfrObj, public CIfrOpHeader {
+private:
+  EFI_IFR_MATCH2 *mMatch2;
+
+public:
+  CIfrMatch2 (
+  IN UINT32   LineNo,
+  IN EFI_GUID *Guid
+  ) : CIfrObj (EFI_IFR_MATCH2_OP, (CHAR8 **)&mMatch2),
+      CIfrOpHeader (EFI_IFR_MATCH2_OP, &mMatch2->Header) {
+    SetLineNo (LineNo);
+    memmove (&mMatch2->SyntaxType, Guid, sizeof (EFI_GUID));
   }
 };
 

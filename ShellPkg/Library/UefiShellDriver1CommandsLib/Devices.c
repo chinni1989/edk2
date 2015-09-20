@@ -1,7 +1,8 @@
 /** @file
   Main file for devices shell Driver1 function.
 
-  Copyright (c) 2010 - 2011, Intel Corporation. All rights reserved.<BR>
+  (C) Copyright 2012-2015 Hewlett-Packard Development Company, L.P.<BR>
+  Copyright (c) 2010 - 2014, Intel Corporation. All rights reserved.<BR>
   This program and the accompanying materials
   are licensed and made available under the terms and conditions of the BSD License
   which accompanies this distribution.  The full text of the license may be found at
@@ -114,6 +115,7 @@ GetDeviceHandleInfo (
 }
 
 STATIC CONST SHELL_PARAM_ITEM ParamList[] = {
+  {L"-sfo", TypeFlag},
   {L"-l", TypeValue},
   {NULL, TypeMax}
   };
@@ -146,9 +148,11 @@ ShellCommandRunDevices (
   UINTN               Children;
   CHAR16              *Name;
   CONST CHAR16        *Lang;
+  BOOLEAN             SfoFlag;
 
   ShellStatus         = SHELL_SUCCESS;
   Language            = NULL;
+  SfoFlag             = FALSE;
 
   //
   // initialize the shell lib (we must be in non-auto-init...)
@@ -165,7 +169,7 @@ ShellCommandRunDevices (
   Status = ShellCommandLineParse (ParamList, &Package, &ProblemParam, TRUE);
   if (EFI_ERROR(Status)) {
     if (Status == EFI_VOLUME_CORRUPTED && ProblemParam != NULL) {
-      ShellPrintHiiEx(-1, -1, NULL, STRING_TOKEN (STR_GEN_PROBLEM), gShellDriver1HiiHandle, ProblemParam);
+      ShellPrintHiiEx(-1, -1, NULL, STRING_TOKEN (STR_GEN_PROBLEM), gShellDriver1HiiHandle, L"devices", ProblemParam);  
       FreePool(ProblemParam);
       ShellStatus = SHELL_INVALID_PARAMETER;
     } else {
@@ -179,7 +183,7 @@ ShellCommandRunDevices (
       //
       // error for too many parameters
       //
-      ShellPrintHiiEx(-1, -1, NULL, STRING_TOKEN (STR_GEN_TOO_MANY), gShellDriver1HiiHandle);
+      ShellPrintHiiEx(-1, -1, NULL, STRING_TOKEN (STR_GEN_TOO_MANY), gShellDriver1HiiHandle, L"devices");  
       ShellStatus = SHELL_INVALID_PARAMETER;
     } else {
       //
@@ -195,7 +199,7 @@ ShellCommandRunDevices (
 //        AsciiSPrint(Language, 10, "en-us");
       } else {
         ASSERT(Language == NULL);
-        ShellPrintHiiEx(-1, -1, NULL, STRING_TOKEN (STR_GEN_NO_VALUE), gShellDriver1HiiHandle, L"-l");
+        ShellPrintHiiEx(-1, -1, NULL, STRING_TOKEN (STR_GEN_NO_VALUE), gShellDriver1HiiHandle, L"devices",  L"-l");  
         ShellCommandLineFreeVarList (Package);
         return (SHELL_INVALID_PARAMETER);
       }
@@ -203,8 +207,14 @@ ShellCommandRunDevices (
 
       //
       // Print Header
+
       //
-      ShellPrintHiiEx(-1, -1, Language, STRING_TOKEN (STR_DEVICES_HEADER_LINES), gShellDriver1HiiHandle);
+      if (ShellCommandLineGetFlag (Package, L"-sfo")) {
+        ShellPrintHiiEx (-1, -1, Language, STRING_TOKEN (STR_GEN_SFO_HEADER), gShellDriver1HiiHandle, L"devices");
+        SfoFlag = TRUE;
+      } else {
+        ShellPrintHiiEx (-1, -1, Language, STRING_TOKEN (STR_DEVICES_HEADER_LINES), gShellDriver1HiiHandle);
+      }
 
       //
       // loop through each handle
@@ -222,16 +232,16 @@ ShellCommandRunDevices (
         Name = NULL;
         Status = GetDeviceHandleInfo(*HandleListWalker, &Type, &Cfg, &Diag, &Parents, &Devices, &Children, &Name, Language);
         if (Name != NULL && (Parents != 0 || Devices != 0 || Children != 0)) {
-          ShellPrintHiiEx(
+          ShellPrintHiiEx (
             -1,
             -1,
             Language,
-            STRING_TOKEN (STR_DEVICES_ITEM_LINE),
+            SfoFlag?STRING_TOKEN (STR_DEVICES_ITEM_LINE_SFO):STRING_TOKEN (STR_DEVICES_ITEM_LINE),
             gShellDriver1HiiHandle,
-            ConvertHandleToHandleIndex(*HandleListWalker),
+            ConvertHandleToHandleIndex (*HandleListWalker),
             Type,
-            Cfg?L'X':L'-',
-            Diag?L'X':L'-',
+            Cfg?(SfoFlag?L'Y':L'X'):(SfoFlag?L'N':L'-'),
+            Diag?(SfoFlag?L'Y':L'X'):(SfoFlag?L'N':L'-'),
             Parents,
             Devices,
             Children,
@@ -240,6 +250,11 @@ ShellCommandRunDevices (
         if (Name != NULL) {
           FreePool(Name);
         }
+        if (ShellGetExecutionBreakFlag ()) {
+          ShellStatus = SHELL_ABORTED;
+          break;
+        }
+        
       }
 
       if (HandleList != NULL) {

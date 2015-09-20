@@ -1,7 +1,7 @@
 ## @file
 # This file is used to create a database used by build tool
 #
-# Copyright (c) 2008 - 2014, Intel Corporation. All rights reserved.<BR>
+# Copyright (c) 2008 - 2015, Intel Corporation. All rights reserved.<BR>
 # This program and the accompanying materials
 # are licensed and made available under the terms and conditions of the BSD License
 # which accompanies this distribution.  The full text of the license may be found at
@@ -15,8 +15,7 @@
 # Import Modules
 #
 import sqlite3
-import os
-import os.path
+import Common.LongFilePathOs as os
 import pickle
 import uuid
 
@@ -36,7 +35,11 @@ from MetaFileParser import *
 from BuildClassObject import *
 from WorkspaceCommon import GetDeclaredPcd
 from Common.Misc import AnalyzeDscPcd
+from Common.Misc import ProcessDuplicatedInf
 import re
+from Common.Parsing import IsValidWord
+from Common.VariableAttributes import VariableAttributes
+import Common.GlobalData as GlobalData
 
 ## Platform build information from DSC file
 #
@@ -103,6 +106,7 @@ class DscBuildData(PlatformBuildClassObject):
         self._Target = Target
         self._Toolchain = Toolchain
         self._Clear()
+        self._HandleOverridePath()
 
     ## XXX[key] = value
     def __setitem__(self, key, value):
@@ -128,7 +132,9 @@ class DscBuildData(PlatformBuildClassObject):
         self._BuildTargets      = None
         self._SkuName           = None
         self._SkuIdentifier     = None
+        self._AvilableSkuIds = None
         self._PcdInfoFlag       = None
+        self._VarCheckFlag = None
         self._FlashDefinition   = None
         self._BuildNumber       = None
         self._MakefileName      = None
@@ -141,11 +147,33 @@ class DscBuildData(PlatformBuildClassObject):
         self._Pcds              = None
         self._DecPcds           = None
         self._BuildOptions      = None
+        self._ModuleTypeOptions = None
         self._LoadFixAddress    = None
         self._RFCLanguages      = None
         self._ISOLanguages      = None
         self._VpdToolGuid       = None
         self.__Macros            = None
+
+
+    ## handle Override Path of Module
+    def _HandleOverridePath(self):
+        RecordList = self._RawData[MODEL_META_DATA_COMPONENT, self._Arch]
+        Macros = self._Macros
+        Macros["EDK_SOURCE"] = GlobalData.gEcpSource
+        for Record in RecordList:
+            ModuleId = Record[5]
+            LineNo = Record[6]
+            ModuleFile = PathClass(NormPath(Record[0]), GlobalData.gWorkspace, Arch=self._Arch)
+            RecordList = self._RawData[MODEL_META_DATA_COMPONENT_SOURCE_OVERRIDE_PATH, self._Arch, None, ModuleId]
+            if RecordList != []:
+                SourceOverridePath = os.path.join(GlobalData.gWorkspace, NormPath(RecordList[0][0]))
+
+                # Check if the source override path exists
+                if not os.path.isdir(SourceOverridePath):
+                    EdkLogger.error('build', FILE_NOT_FOUND, Message='Source override path does not exist:', File=self.MetaFile, ExtraData=SourceOverridePath, Line=LineNo)
+
+                #Add to GlobalData Variables
+                GlobalData.gOverrideDir[ModuleFile.Key] = SourceOverridePath
 
     ## Get current effective macros
     def _GetMacros(self):
@@ -206,8 +234,11 @@ class DscBuildData(PlatformBuildClassObject):
                 if self._SkuName == None:
                     self._SkuName = Record[2]
                 self._SkuIdentifier = Record[2]
+                self._AvilableSkuIds = Record[2]
             elif Name == TAB_DSC_DEFINES_PCD_INFO_GENERATION:
                 self._PcdInfoFlag = Record[2]
+            elif Name == TAB_DSC_DEFINES_PCD_VAR_CHECK_GENERATION:
+                self._VarCheckFlag = Record[2]
             elif Name == TAB_FIX_LOAD_TOP_MEMORY_ADDRESS:
                 try:
                     self._LoadFixAddress = int (Record[2], 0)
@@ -327,7 +358,17 @@ class DscBuildData(PlatformBuildClassObject):
             return True
         else:
             return False
-            
+    def _GetVarCheckFlag(self):  
+        if self._VarCheckFlag == None or self._VarCheckFlag.upper() == 'FALSE':
+            return False
+        elif self._VarCheckFlag.upper() == 'TRUE':
+            return True
+        else:
+            return False
+    def _GetAviableSkuIds(self):
+        if self._AvilableSkuIds:
+            return self._AvilableSkuIds
+        return self.SkuIdentifier
     def _GetSkuIdentifier(self):
         if self._SkuName:
             return self._SkuName
@@ -478,6 +519,7 @@ class DscBuildData(PlatformBuildClassObject):
         Macros = self._Macros
         Macros["EDK_SOURCE"] = GlobalData.gEcpSource
         for Record in RecordList:
+            DuplicatedFile = False
             ModuleFile = PathClass(NormPath(Record[0], Macros), GlobalData.gWorkspace, Arch=self._Arch)
             ModuleId = Record[5]
             LineNo = Record[6]
@@ -490,22 +532,10 @@ class DscBuildData(PlatformBuildClassObject):
             # Check duplication
             # If arch is COMMON, no duplicate module is checked since all modules in all component sections are selected
             if self._Arch != 'COMMON' and ModuleFile in self._Modules:
-                EdkLogger.error('build', FILE_DUPLICATED, File=self.MetaFile, ExtraData=str(ModuleFile), Line=LineNo)
+                DuplicatedFile = True
 
             Module = ModuleBuildClassObject()
             Module.MetaFile = ModuleFile
-
-            # get module override path
-            RecordList = self._RawData[MODEL_META_DATA_COMPONENT_SOURCE_OVERRIDE_PATH, self._Arch, None, ModuleId]
-            if RecordList != []:
-                Module.SourceOverridePath = os.path.join(GlobalData.gWorkspace, NormPath(RecordList[0][0], Macros))
-
-                # Check if the source override path exists
-                if not os.path.isdir(Module.SourceOverridePath):
-                    EdkLogger.error('build', FILE_NOT_FOUND, Message = 'Source override path does not exist:', File=self.MetaFile, ExtraData=Module.SourceOverridePath, Line=LineNo)
-                
-                #Add to GlobalData Variables
-                GlobalData.gOverrideDir[ModuleFile.Key] = Module.SourceOverridePath
 
             # get module private library instance
             RecordList = self._RawData[MODEL_EFI_LIBRARY_CLASS, self._Arch, None, ModuleId]
@@ -562,6 +592,16 @@ class DscBuildData(PlatformBuildClassObject):
                 else:
                     OptionString = Module.BuildOptions[ToolChainFamily, ToolChain]
                     Module.BuildOptions[ToolChainFamily, ToolChain] = OptionString + " " + Option
+
+            RecordList = self._RawData[MODEL_META_DATA_HEADER, self._Arch, None, ModuleId]
+            if DuplicatedFile and not RecordList:
+                EdkLogger.error('build', FILE_DUPLICATED, File=self.MetaFile, ExtraData=str(ModuleFile), Line=LineNo)
+            if RecordList:
+                if len(RecordList) != 1:
+                    EdkLogger.error('build', OPTION_UNKNOWN, 'Only FILE_GUID can be listed in <Defines> section.',
+                                    File=self.MetaFile, ExtraData=str(ModuleFile), Line=LineNo)
+                ModuleFile = ProcessDuplicatedInf(ModuleFile, RecordList[0][2], GlobalData.gWorkspace)
+                ModuleFile.Arch = self._Arch
 
             self._Modules[ModuleFile] = Module
         return self._Modules
@@ -641,9 +681,26 @@ class DscBuildData(PlatformBuildClassObject):
     def _ValidatePcd(self, PcdCName, TokenSpaceGuid, Setting, PcdType, LineNo):
         if self._DecPcds == None:
             self._DecPcds = GetDeclaredPcd(self, self._Bdb, self._Arch, self._Target, self._Toolchain)
+            FdfInfList = []
+            if GlobalData.gFdfParser:
+                FdfInfList = GlobalData.gFdfParser.Profile.InfList
+
+            PkgSet = set()
+            for Inf in FdfInfList:
+                ModuleFile = PathClass(NormPath(Inf), GlobalData.gWorkspace, Arch=self._Arch)
+                if ModuleFile in self._Modules:
+                    continue
+                ModuleData = self._Bdb[ModuleFile, self._Arch, self._Target, self._Toolchain]
+                PkgSet.update(ModuleData.Packages)
+            DecPcds = {}
+            for Pkg in PkgSet:
+                for Pcd in Pkg.Pcds:
+                    DecPcds[Pcd[0], Pcd[1]] = Pkg.Pcds[Pcd]
+            self._DecPcds.update(DecPcds)
+
         if (PcdCName, TokenSpaceGuid) not in self._DecPcds:
             EdkLogger.error('build', PARSER_ERROR,
-                            "Pcd (%s.%s) defined in DSC is not declared in DEC files." % (TokenSpaceGuid, PcdCName),
+                            "Pcd (%s.%s) defined in DSC is not declared in DEC files. Arch: ['%s']" % (TokenSpaceGuid, PcdCName, self._Arch),
                             File=self.MetaFile, Line=LineNo)
         ValueList, IsValid, Index = AnalyzeDscPcd(Setting, PcdType, self._DecPcds[PcdCName, TokenSpaceGuid].DatumType)
         if not IsValid and PcdType not in [MODEL_PCD_FEATURE_FLAG, MODEL_PCD_FIXED_AT_BUILD]:
@@ -698,18 +755,37 @@ class DscBuildData(PlatformBuildClassObject):
         if self._BuildOptions == None:
             self._BuildOptions = sdict()
             #
-            # Retrieve build option for EDKII style module
+            # Retrieve build option for EDKII and EDK style module
             #
-            RecordList = self._RawData[MODEL_META_DATA_BUILD_OPTION, self._Arch, EDKII_NAME]
-            for ToolChainFamily, ToolChain, Option, Dummy1, Dummy2, Dummy3, Dummy4 in RecordList:
-                self._BuildOptions[ToolChainFamily, ToolChain, EDKII_NAME] = Option
-            #
-            # Retrieve build option for EDK style module
-            #
-            RecordList = self._RawData[MODEL_META_DATA_BUILD_OPTION, self._Arch, EDK_NAME]     
-            for ToolChainFamily, ToolChain, Option, Dummy1, Dummy2, Dummy3, Dummy4 in RecordList:
-                self._BuildOptions[ToolChainFamily, ToolChain, EDK_NAME] = Option
+            for CodeBase in (EDKII_NAME, EDK_NAME):
+                RecordList = self._RawData[MODEL_META_DATA_BUILD_OPTION, self._Arch, CodeBase]
+                for ToolChainFamily, ToolChain, Option, Dummy1, Dummy2, Dummy3, Dummy4 in RecordList:
+                    CurKey = (ToolChainFamily, ToolChain, CodeBase)
+                    #
+                    # Only flags can be appended
+                    #
+                    if CurKey not in self._BuildOptions or not ToolChain.endswith('_FLAGS') or Option.startswith('='):
+                        self._BuildOptions[CurKey] = Option
+                    else:
+                        self._BuildOptions[CurKey] += ' ' + Option
         return self._BuildOptions
+
+    def GetBuildOptionsByModuleType(self, Edk, ModuleType):
+        if self._ModuleTypeOptions == None:
+            self._ModuleTypeOptions = sdict()
+        if (Edk, ModuleType) not in self._ModuleTypeOptions:
+            options = sdict()
+            self._ModuleTypeOptions[Edk, ModuleType] = options
+            DriverType = '%s.%s' % (Edk, ModuleType)
+            RecordList = self._RawData[MODEL_META_DATA_BUILD_OPTION, self._Arch, DriverType]
+            for ToolChainFamily, ToolChain, Option, Arch, Type, Dummy3, Dummy4 in RecordList:
+                if Type == DriverType:
+                    Key = (ToolChainFamily, ToolChain, Edk)
+                    if Key not in options or not ToolChain.endswith('_FLAGS') or Option.startswith('='):
+                        options[Key] = Option
+                    else:
+                        options[Key] += ' ' + Option
+        return self._ModuleTypeOptions[Edk, ModuleType]
 
     ## Retrieve non-dynamic PCD settings
     #
@@ -857,6 +933,17 @@ class DscBuildData(PlatformBuildClassObject):
                
         return Pcds
 
+    def CompareVarAttr(self, Attr1, Attr2):
+        if not Attr1 or not Attr2:  # for empty string
+            return True
+        Attr1s = [attr.strip() for attr in Attr1.split(",")]
+        Attr1Set = set(Attr1s)
+        Attr2s = [attr.strip() for attr in Attr2.split(",")]
+        Attr2Set = set(Attr2s)
+        if Attr2Set == Attr1Set:
+            return True
+        else:
+            return False
     ## Retrieve dynamic HII PCD settings
     #
     #   @param  Type    PCD type
@@ -866,6 +953,7 @@ class DscBuildData(PlatformBuildClassObject):
     def _GetDynamicHiiPcd(self, Type):
         
         SkuObj = SkuClass(self.SkuIdentifier,self.SkuIds)
+        VariableAttrs = {}
         
         Pcds = sdict()
         #
@@ -890,22 +978,42 @@ class DscBuildData(PlatformBuildClassObject):
             Setting = PcdDict[self._Arch, SkuName, PcdCName, TokenSpaceGuid]
             if Setting == None:
                 continue
-            VariableName, VariableGuid, VariableOffset, DefaultValue = self._ValidatePcd(PcdCName, TokenSpaceGuid, Setting, Type, Dummy4)
+            VariableName, VariableGuid, VariableOffset, DefaultValue, VarAttribute = self._ValidatePcd(PcdCName, TokenSpaceGuid, Setting, Type, Dummy4)
             
+            rt, Msg = VariableAttributes.ValidateVarAttributes(VarAttribute)
+            if not rt:
+                EdkLogger.error("build", PCD_VARIABLE_ATTRIBUTES_ERROR, "Variable attributes settings for %s is incorrect.\n %s" % (".".join((TokenSpaceGuid, PcdCName)), Msg),
+                        ExtraData = "[%s]" % VarAttribute)
             ExceedMax = False
+            FormatCorrect = True
             if VariableOffset.isdigit():
                 if int(VariableOffset,10) > 0xFFFF:
                     ExceedMax = True
             elif re.match(r'[\t\s]*0[xX][a-fA-F0-9]+$',VariableOffset):
                 if int(VariableOffset,16) > 0xFFFF:
                     ExceedMax = True
+            # For Offset written in "A.B"
+            elif VariableOffset.find('.') > -1:
+                VariableOffsetList = VariableOffset.split(".")
+                if not (len(VariableOffsetList) == 2
+                        and IsValidWord(VariableOffsetList[0])
+                        and IsValidWord(VariableOffsetList[1])):
+                    FormatCorrect = False
             else:
+                FormatCorrect = False
+            if not FormatCorrect:
                 EdkLogger.error('Build', FORMAT_INVALID, "Invalid syntax or format of the variable offset value is incorrect for %s." % ".".join((TokenSpaceGuid,PcdCName)))
             
             if ExceedMax:
                 EdkLogger.error('Build', OPTION_VALUE_INVALID, "The variable offset value must not exceed the maximum value of 0xFFFF (UINT16) for %s." % ".".join((TokenSpaceGuid,PcdCName)))
+            if (VariableName, VariableGuid) not in VariableAttrs:
+                VariableAttrs[(VariableName, VariableGuid)] = VarAttribute
+            else:
+                if not self.CompareVarAttr(VariableAttrs[(VariableName, VariableGuid)], VarAttribute):
+                    EdkLogger.error('Build', PCD_VARIABLE_ATTRIBUTES_CONFLICT_ERROR, "The variable %s.%s for DynamicHii PCDs has conflicting attributes [%s] and [%s] " % (VariableGuid, VariableName, VarAttribute, VariableAttrs[(VariableName, VariableGuid)]))
             
-            SkuInfo = SkuInfoClass(SkuName, self.SkuIds[SkuName], VariableName, VariableGuid, VariableOffset, DefaultValue)
+            SkuInfo = SkuInfoClass(SkuName, self.SkuIds[SkuName], VariableName, VariableGuid, VariableOffset, DefaultValue, VariableAttribute = VarAttribute)
+            pcdDecObject = self._DecPcds[PcdCName, TokenSpaceGuid]
             if (PcdCName,TokenSpaceGuid) in Pcds.keys():  
                 pcdObject = Pcds[PcdCName,TokenSpaceGuid]
                 pcdObject.SkuInfoList[SkuName] = SkuInfo
@@ -920,7 +1028,10 @@ class DscBuildData(PlatformBuildClassObject):
                                                 '',
                                                 {SkuName : SkuInfo},
                                                 False,
-                                                None
+                                                None,
+                                                pcdDecObject.validateranges,
+                                                pcdDecObject.validlists,
+                                                pcdDecObject.expressions
                                                 )
                 
 
@@ -1025,7 +1136,7 @@ class DscBuildData(PlatformBuildClassObject):
                                                 TokenSpaceGuid,
                                                 self._PCD_TYPE_STRING_[Type],
                                                 '',
-                                                '',
+                                                InitialValue,
                                                 '',
                                                 MaxDatumSize,
                                                 {SkuName : SkuInfo},
@@ -1091,7 +1202,9 @@ class DscBuildData(PlatformBuildClassObject):
     BuildTargets        = property(_GetBuildTarget)
     SkuName             = property(_GetSkuName, _SetSkuName)
     SkuIdentifier       = property(_GetSkuIdentifier)
+    AvilableSkuIds = property(_GetAviableSkuIds)
     PcdInfoFlag         = property(_GetPcdInfoFlag)
+    VarCheckFlag = property(_GetVarCheckFlag)
     FlashDefinition     = property(_GetFdfFile)
     BuildNumber         = property(_GetBuildNumber)
     MakefileName        = property(_GetMakefileName)
@@ -1411,6 +1524,7 @@ class DecBuildData(PackageBuildClassObject):
 
             DefaultValue, DatumType, TokenNumber = AnalyzePcdData(Setting)
                                        
+            validateranges, validlists, expressions = self._RawData.GetValidExpression(TokenSpaceGuid, PcdCName)                          
             Pcds[PcdCName, TokenSpaceGuid, self._PCD_TYPE_STRING_[Type]] = PcdClassObject(
                                                                             PcdCName,
                                                                             TokenSpaceGuid,
@@ -1421,7 +1535,10 @@ class DecBuildData(PackageBuildClassObject):
                                                                             '',
                                                                             {},
                                                                             False,
-                                                                            None
+                                                                            None,
+                                                                            list(validateranges),
+                                                                            list(validlists),
+                                                                            list(expressions)
                                                                             )
         return Pcds
 
@@ -1666,6 +1783,9 @@ class InfBuildData(ModuleBuildClassObject):
             # items defined _PROPERTY_ don't need additional processing
             if Name in self:
                 self[Name] = Value
+                if self._Defs == None:
+                    self._Defs = sdict()
+                self._Defs[Name] = Value
             # some special items in [Defines] section need special treatment
             elif Name in ('EFI_SPECIFICATION_VERSION', 'UEFI_SPECIFICATION_VERSION', 'EDK_RELEASE_VERSION', 'PI_SPECIFICATION_VERSION'):
                 if Name in ('EFI_SPECIFICATION_VERSION', 'UEFI_SPECIFICATION_VERSION'):
@@ -1893,7 +2013,7 @@ class InfBuildData(ModuleBuildClassObject):
             if self._Header_ == None:
                 self._GetHeaderInfo()
             if self._Guid == None:
-                self._Guid = '00000000-0000-0000-000000000000'
+                self._Guid = '00000000-0000-0000-0000-000000000000'
         return self._Guid
 
     ## Retrieve module version
@@ -1998,7 +2118,7 @@ class InfBuildData(ModuleBuildClassObject):
         return self._Defs
 
     ## Retrieve binary files
-    def _GetBinaryFiles(self):
+    def _GetBinaries(self):
         if self._Binaries == None:
             self._Binaries = []
             RecordList = self._RawData[MODEL_EFI_BINARY_FILE, self._Arch, self._Platform]
@@ -2025,8 +2145,27 @@ class InfBuildData(ModuleBuildClassObject):
                 self._Binaries.append(File)
         return self._Binaries
 
+    ## Retrieve binary files with error check.
+    def _GetBinaryFiles(self):
+        Binaries = self._GetBinaries()
+        if GlobalData.gIgnoreSource and Binaries == []:
+            ErrorInfo = "The INF file does not contain any Binaries to use in creating the image\n"
+            EdkLogger.error('build', RESOURCE_NOT_AVAILABLE, ExtraData=ErrorInfo, File=self.MetaFile)
+
+        return Binaries
+    ## Check whether it exists the binaries with current ARCH in AsBuild INF
+    def _IsSupportedArch(self):
+        if self._GetBinaries() and not self._GetSourceFiles():
+            return True
+        else:
+            return False
     ## Retrieve source files
     def _GetSourceFiles(self):
+        #Ignore all source files in a binary build mode
+        if GlobalData.gIgnoreSource:
+            self._Sources = []
+            return self._Sources
+
         if self._Sources == None:
             self._Sources = []
             RecordList = self._RawData[MODEL_EFI_SOURCE_FILE, self._Arch, self._Platform]
@@ -2254,7 +2393,7 @@ class InfBuildData(ModuleBuildClassObject):
                 ToolChainFamily = Record[0]
                 ToolChain = Record[1]
                 Option = Record[2]
-                if (ToolChainFamily, ToolChain) not in self._BuildOptions:
+                if (ToolChainFamily, ToolChain) not in self._BuildOptions or Option.startswith('='):
                     self._BuildOptions[ToolChainFamily, ToolChain] = Option
                 else:
                     # concatenate the option string if they're for the same tool
@@ -2279,6 +2418,13 @@ class InfBuildData(ModuleBuildClassObject):
                     self.ModuleType == 'DXE_SAL_DRIVER' or self.ModuleType == 'DXE_RUNTIME_DRIVER':
                     EdkLogger.error('build', RESOURCE_NOT_AVAILABLE, "No [Depex] section or no valid expression in [Depex] section for [%s] module" \
                                     % self.ModuleType, File=self.MetaFile)
+
+            if len(RecordList) != 0 and self.ModuleType == 'USER_DEFINED':
+                for Record in RecordList:
+                    if Record[4] not in ['PEIM', 'DXE_DRIVER', 'DXE_SMM_DRIVER']:
+                        EdkLogger.error('build', FORMAT_INVALID,
+                                        "'%s' module must specify the type of [Depex] section" % self.ModuleType,
+                                        File=self.MetaFile)
 
             Depex = sdict()
             for Record in RecordList:
@@ -2527,6 +2673,7 @@ class InfBuildData(ModuleBuildClassObject):
     Depex                   = property(_GetDepex)
     DepexExpression         = property(_GetDepexExpression)
     IsBinaryModule = property(_IsBinaryModule)
+    IsSupportedArch = property(_IsSupportedArch)
 
 ## Database
 #
@@ -2540,8 +2687,6 @@ class InfBuildData(ModuleBuildClassObject):
 #
 class WorkspaceDatabase(object):
 
-    # default database file path
-    _DB_PATH_ = "Conf/.cache/build.db"
 
     #
     # internal class used for call corresponding file parser and caching the result
@@ -2652,7 +2797,7 @@ class WorkspaceDatabase(object):
     def __init__(self, DbPath, RenewDb=False):
         self._DbClosedFlag = False
         if not DbPath:
-            DbPath = os.path.normpath(os.path.join(GlobalData.gWorkspace, self._DB_PATH_))
+            DbPath = os.path.normpath(os.path.join(GlobalData.gWorkspace, 'Conf', GlobalData.gDatabasePath))
 
         # don't create necessary path for db in memory
         if DbPath != ':memory:':

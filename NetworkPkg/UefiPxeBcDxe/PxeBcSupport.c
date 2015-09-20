@@ -1,7 +1,7 @@
 /** @file
   Support functions implementation for UefiPxeBc Driver.
 
-  Copyright (c) 2007 - 2013, Intel Corporation. All rights reserved.<BR>
+  Copyright (c) 2007 - 2015, Intel Corporation. All rights reserved.<BR>
 
   This program and the accompanying materials
   are licensed and made available under the terms and conditions of the BSD License
@@ -28,7 +28,7 @@
 
 **/
 EFI_STATUS
-PxeBcFlushStaionIp (
+PxeBcFlushStationIp (
   PXEBC_PRIVATE_DATA       *Private,
   EFI_IP_ADDRESS           *StationIp,
   EFI_IP_ADDRESS           *SubnetMask     OPTIONAL
@@ -1392,6 +1392,7 @@ PxeBcUintnToAscDecWithFormat (
 
   @param[in]  Number         Numeric value to be converted.
   @param[in]  Buffer         The pointer to the buffer for ASCII string.
+  @param[in]  BufferSize     The maxsize of the buffer.
 
   @return     Length         The actual length of the ASCII string.
 
@@ -1399,7 +1400,8 @@ PxeBcUintnToAscDecWithFormat (
 UINTN
 PxeBcUintnToAscDec (
   IN UINTN               Number,
-  IN UINT8               *Buffer
+  IN UINT8               *Buffer,
+  IN UINTN               BufferSize
   )
 {
   UINTN           Index;
@@ -1415,7 +1417,7 @@ PxeBcUintnToAscDec (
     Number         = (UINTN) (Number / 10);
   } while (Number != 0);
 
-  AsciiStrCpy ((CHAR8 *) Buffer, &TempStr[Index]);
+  AsciiStrCpyS ((CHAR8 *) Buffer, BufferSize, &TempStr[Index]);
 
   Length = AsciiStrLen ((CHAR8 *) Buffer);
 

@@ -1,6 +1,6 @@
 /** @file
 *
-*  Copyright (c) 2011-2013, ARM Limited. All rights reserved.
+*  Copyright (c) 2011 - 2015, ARM Limited. All rights reserved.
 *
 *  This program and the accompanying materials
 *  are licensed and made available under the terms and conditions of the BSD License
@@ -16,10 +16,153 @@
 
 #include <Guid/ArmGlobalVariableHob.h>
 
-extern EFI_HANDLE mImageHandle;
-extern BDS_LOAD_OPTION_SUPPORT *BdsLoadOptionSupportList;
+#include <libfdt.h>
 
+/**
+  Worker function that displays the list of boot options that is passed in.
 
+  The function loops over the entries of the list of boot options that is passed
+  in. For each entry, the boot option description is displayed on a single line
+  along with the position of the option in the list. In debug mode, the UEFI
+  device path and the arguments of the boot option are displayed as well in
+  subsequent lines.
+
+  @param[in]  BootOptionsList  List of the boot options
+
+**/
+STATIC
+VOID
+DisplayBootOptions (
+  IN  LIST_ENTRY*   BootOptionsList
+  )
+{
+  EFI_STATUS        Status;
+  UINTN             BootOptionCount;
+  LIST_ENTRY       *Entry;
+  BDS_LOAD_OPTION  *BdsLoadOption;
+  BOOLEAN           IsUnicode;
+
+  BootOptionCount = 0 ;
+  for (Entry = GetFirstNode (BootOptionsList);
+       !IsNull (BootOptionsList, Entry);
+       Entry = GetNextNode (BootOptionsList, Entry)
+      ) {
+
+    BdsLoadOption = LOAD_OPTION_FROM_LINK (Entry);
+    Print (L"[%d] %s\n", ++BootOptionCount, BdsLoadOption->Description);
+
+    DEBUG_CODE_BEGIN ();
+      CHAR16*                           DevicePathTxt;
+      EFI_DEVICE_PATH_TO_TEXT_PROTOCOL* DevicePathToTextProtocol;
+
+      Status = gBS->LocateProtocol (
+                     &gEfiDevicePathToTextProtocolGuid,
+                     NULL,
+                     (VOID **)&DevicePathToTextProtocol
+                     );
+      ASSERT_EFI_ERROR (Status);
+      DevicePathTxt = DevicePathToTextProtocol->ConvertDevicePathToText (
+                                                  BdsLoadOption->FilePathList,
+                                                  TRUE,
+                                                  TRUE
+                                                  );
+      Print (L"\t- %s\n", DevicePathTxt);
+
+      if (IsPrintableString (BdsLoadOption->OptionalData, &IsUnicode)) {
+        if (IsUnicode) {
+          Print (L"\t- Arguments: %s\n", BdsLoadOption->OptionalData);
+        } else {
+          AsciiPrint ("\t- Arguments: %a\n", BdsLoadOption->OptionalData);
+        }
+      }
+
+      FreePool (DevicePathTxt);
+    DEBUG_CODE_END ();
+  }
+}
+
+/**
+  Worker function that asks for a boot option to be selected and returns a
+  pointer to the structure describing the selected boot option.
+
+  @param[in]  BootOptionsList  List of the boot options
+
+  @retval     EFI_SUCCESS      Selection succeeded
+  @retval     !EFI_SUCCESS     Input error or input cancelled
+
+**/
+STATIC
+EFI_STATUS
+SelectBootOption (
+  IN  LIST_ENTRY*               BootOptionsList,
+  IN  CONST CHAR16*             InputStatement,
+  OUT BDS_LOAD_OPTION_ENTRY**   BdsLoadOptionEntry
+  )
+{
+  EFI_STATUS                    Status;
+  UINTN                         BootOptionCount;
+  UINT16                       *BootOrder;
+  LIST_ENTRY*                   Entry;
+  UINTN                         BootOptionSelected;
+  UINTN                         Index;
+
+  // Get the number of boot options
+  Status = GetGlobalEnvironmentVariable (
+            L"BootOrder", NULL, &BootOptionCount, (VOID**)&BootOrder
+            );
+  if (EFI_ERROR (Status)) {
+    goto ErrorExit;
+  }
+  FreePool (BootOrder);
+  BootOptionCount /= sizeof (UINT16);
+
+  // Check if a valid boot option(s) is found
+  if (BootOptionCount == 0) {
+    if (StrCmp (InputStatement, DELETE_BOOT_ENTRY) == 0) {
+      Print (L"Nothing to remove!\n");
+    } else if (StrCmp (InputStatement, UPDATE_BOOT_ENTRY) == 0) {
+      Print (L"Nothing to update!\n");
+    } else if (StrCmp (InputStatement, MOVE_BOOT_ENTRY) == 0) {
+      Print (L"Nothing to move!\n");
+    } else {
+      Print (L"No supported Boot Entry.\n");
+    }
+    return EFI_NOT_FOUND;
+  }
+
+  // Get the index of the boot device to delete
+  BootOptionSelected = 0;
+  while (BootOptionSelected == 0) {
+    Print (InputStatement);
+    Status = GetHIInputInteger (&BootOptionSelected);
+    if (EFI_ERROR (Status)) {
+      Print (L"\n");
+      goto ErrorExit;
+    } else if ((BootOptionSelected == 0) || (BootOptionSelected > BootOptionCount)) {
+      Print (L"Invalid input (max %d)\n", BootOptionCount);
+      BootOptionSelected = 0;
+    }
+  }
+
+  // Get the structure of the Boot device to delete
+  Index = 1;
+  for (Entry = GetFirstNode (BootOptionsList);
+       !IsNull (BootOptionsList, Entry);
+       Entry = GetNextNode (BootOptionsList,Entry)
+       )
+  {
+    if (Index == BootOptionSelected) {
+      *BdsLoadOptionEntry = LOAD_OPTION_ENTRY_FROM_LINK (Entry);
+      break;
+    }
+    Index++;
+  }
+
+ErrorExit:
+  return Status;
+}
+
+STATIC
 EFI_STATUS
 SelectBootDevice (
   OUT BDS_SUPPORTED_DEVICE** SupportedBootDevice
@@ -118,19 +261,16 @@ BootMenuAddBootOption (
 {
   EFI_STATUS                Status;
   BDS_SUPPORTED_DEVICE*     SupportedBootDevice;
-  ARM_BDS_LOADER_ARGUMENTS* BootArguments;
   CHAR16                    BootDescription[BOOT_DEVICE_DESCRIPTION_MAX];
-  CHAR8                     CmdLine[BOOT_DEVICE_OPTION_MAX];
+  CHAR16                    CmdLine[BOOT_DEVICE_OPTION_MAX];
   UINT32                    Attributes;
-  ARM_BDS_LOADER_TYPE       BootType;
   BDS_LOAD_OPTION_ENTRY     *BdsLoadOptionEntry;
   EFI_DEVICE_PATH           *DevicePath;
   EFI_DEVICE_PATH_PROTOCOL  *DevicePathNodes;
-  EFI_DEVICE_PATH_PROTOCOL  *InitrdPathNodes;
-  EFI_DEVICE_PATH_PROTOCOL  *InitrdPath;
-  UINTN                     CmdLineSize;
-  BOOLEAN                   InitrdSupport;
-  UINTN                     InitrdSize;
+  UINT8*                    OptionalData;
+  UINTN                     OptionalDataSize;
+  BOOLEAN                   EfiBinary;
+  CHAR16                    *LinuxDevicePath;
 
   Attributes                = 0;
   SupportedBootDevice = NULL;
@@ -143,8 +283,12 @@ BootMenuAddBootOption (
   }
 
   // Create the specific device path node
-  Status = SupportedBootDevice->Support->CreateDevicePathNode (L"EFI Application or the kernel", &DevicePathNodes, &BootType, &Attributes);
-  if (EFI_ERROR(Status)) {
+  if (FeaturePcdGet (PcdBdsLinuxSupport) && mLinuxLoaderDevicePath) {
+    Status = SupportedBootDevice->Support->CreateDevicePathNode (L"EFI Application or the kernel", &DevicePathNodes);
+  } else {
+    Status = SupportedBootDevice->Support->CreateDevicePathNode (L"EFI Application", &DevicePathNodes);
+  }
+  if (EFI_ERROR (Status)) {
     Status = EFI_ABORTED;
     goto EXIT;
   }
@@ -155,55 +299,46 @@ BootMenuAddBootOption (
     goto EXIT;
   }
 
-  if ((BootType == BDS_LOADER_KERNEL_LINUX_ATAG) || (BootType == BDS_LOADER_KERNEL_LINUX_FDT)) {
-    Print(L"Add an initrd: ");
-    Status = GetHIInputBoolean (&InitrdSupport);
-    if (EFI_ERROR(Status)) {
+  // Is it an EFI application?
+  if (FeaturePcdGet (PcdBdsLinuxSupport) && mLinuxLoaderDevicePath) {
+    Status = IsEfiBinary (DevicePath, &EfiBinary);
+    if (EFI_ERROR (Status)) {
       Status = EFI_ABORTED;
       goto EXIT;
     }
 
-    if (InitrdSupport) {
-      // Create the specific device path node
-      Status = SupportedBootDevice->Support->CreateDevicePathNode (L"initrd", &InitrdPathNodes, NULL, NULL);
-      if (EFI_ERROR(Status) && Status != EFI_NOT_FOUND) { // EFI_NOT_FOUND is returned on empty input string, but we can boot without an initrd
-        Status = EFI_ABORTED;
-        goto EXIT;
-      }
+    if (EfiBinary == FALSE) {
+      Print (L"It is assumed the binary is a Linux kernel and the embedded Linux Loader is going to be used.\n");
+      Print (L"Supported command line formats by the embedded Linux Loader:\n");
+      Print (L"- <EFI device path of the Linux kernel> -c \"<Linux kernel command line>\"\n");
+      Print (L"- <EFI device path of the Linux kernel> -c \"<Linux kernel command line>\" -f <EFI Device Path of the Linux initrd>\n");
+      Print (L"- <EFI device path of the Linux kernel> -c \"<Linux kernel command line>\" -a <Machine Type for ATAG Linux kernel>\n");
 
-      if (InitrdPathNodes != NULL) {
-        // Append the Device Path to the selected device path
-        InitrdPath = AppendDevicePath (SupportedBootDevice->DevicePathProtocol, (CONST EFI_DEVICE_PATH_PROTOCOL *)InitrdPathNodes);
-        if (InitrdPath == NULL) {
-          Status = EFI_OUT_OF_RESOURCES;
-          goto EXIT;
-        }
-      } else {
-        InitrdPath = NULL;
-      }
+      // Copy the Linux path into the command line
+      LinuxDevicePath = ConvertDevicePathToText (DevicePath, FALSE, FALSE);
+      CopyMem (CmdLine, LinuxDevicePath, MAX (sizeof (CmdLine), StrSize (LinuxDevicePath)));
+      FreePool (LinuxDevicePath);
+
+      // Free the generated Device Path
+      FreePool (DevicePath);
+      // and use the embedded Linux Loader as the EFI application
+      DevicePath = mLinuxLoaderDevicePath;
     } else {
-      InitrdPath = NULL;
+      CmdLine[0] = L'\0';
     }
-
-    Print(L"Arguments to pass to the binary: ");
-    Status = GetHIInputAscii (CmdLine,BOOT_DEVICE_OPTION_MAX);
-    if (EFI_ERROR(Status)) {
-      Status = EFI_ABORTED;
-      goto FREE_DEVICE_PATH;
-    }
-
-    CmdLineSize = AsciiStrSize (CmdLine);
-    InitrdSize = GetDevicePathSize (InitrdPath);
-
-    BootArguments = (ARM_BDS_LOADER_ARGUMENTS*)AllocatePool (sizeof(ARM_BDS_LOADER_ARGUMENTS) + CmdLineSize + InitrdSize);
-
-    BootArguments->LinuxArguments.CmdLineSize = CmdLineSize;
-    BootArguments->LinuxArguments.InitrdSize = InitrdSize;
-    CopyMem ((VOID*)(&BootArguments->LinuxArguments + 1), CmdLine, CmdLineSize);
-    CopyMem ((VOID*)((UINTN)(&BootArguments->LinuxArguments + 1) + CmdLineSize), InitrdPath, InitrdSize);
   } else {
-    BootArguments = NULL;
+    CmdLine[0] = L'\0';
   }
+
+  Print (L"Arguments to pass to the EFI Application: ");
+  Status = EditHIInputStr (CmdLine, BOOT_DEVICE_OPTION_MAX);
+  if (EFI_ERROR (Status)) {
+    Status = EFI_ABORTED;
+    goto EXIT;
+  }
+
+  OptionalData = (UINT8*)CmdLine;
+  OptionalDataSize = StrSize (CmdLine);
 
   Print(L"Description for this new Entry: ");
   Status = GetHIInputStr (BootDescription, BOOT_DEVICE_DESCRIPTION_MAX);
@@ -214,7 +349,7 @@ BootMenuAddBootOption (
 
   // Create new entry
   BdsLoadOptionEntry = (BDS_LOAD_OPTION_ENTRY*)AllocatePool (sizeof(BDS_LOAD_OPTION_ENTRY));
-  Status = BootOptionCreate (Attributes, BootDescription, DevicePath, BootType, BootArguments, &BdsLoadOptionEntry->BdsLoadOption);
+  Status = BootOptionCreate (Attributes, BootDescription, DevicePath, OptionalData, OptionalDataSize, &BdsLoadOptionEntry->BdsLoadOption);
   if (!EFI_ERROR(Status)) {
     InsertTailList (BootOptionsList, &BdsLoadOptionEntry->Link);
   }
@@ -230,103 +365,6 @@ EXIT:
   return Status;
 }
 
-STATIC
-EFI_STATUS
-BootMenuSelectBootOption (
-  IN  LIST_ENTRY*               BootOptionsList,
-  IN  CONST CHAR16*             InputStatement,
-  IN  BOOLEAN                   OnlyArmBdsBootEntry,
-  OUT BDS_LOAD_OPTION_ENTRY**   BdsLoadOptionEntry
-  )
-{
-  EFI_STATUS                    Status;
-  LIST_ENTRY*                   Entry;
-  BDS_LOAD_OPTION*              BdsLoadOption;
-  UINTN                         BootOptionSelected;
-  UINTN                         BootOptionCount;
-  UINTN                         Index;
-
-  // Display the list of supported boot devices
-  BootOptionCount = 0;
-  for (Entry = GetFirstNode (BootOptionsList);
-       !IsNull (BootOptionsList,Entry);
-       Entry = GetNextNode (BootOptionsList, Entry)
-       )
-  {
-    BdsLoadOption = LOAD_OPTION_FROM_LINK(Entry);
-
-    if (OnlyArmBdsBootEntry && !IS_ARM_BDS_BOOTENTRY (BdsLoadOption)) {
-      continue;
-    }
-
-    Print (L"[%d] %s\n", (BootOptionCount + 1), BdsLoadOption->Description);
-
-    DEBUG_CODE_BEGIN();
-      CHAR16*                           DevicePathTxt;
-      EFI_DEVICE_PATH_TO_TEXT_PROTOCOL* DevicePathToTextProtocol;
-      ARM_BDS_LOADER_TYPE               LoaderType;
-      ARM_BDS_LOADER_OPTIONAL_DATA*     OptionalData;
-
-      Status = gBS->LocateProtocol(&gEfiDevicePathToTextProtocolGuid, NULL, (VOID **)&DevicePathToTextProtocol);
-      ASSERT_EFI_ERROR(Status);
-      DevicePathTxt = DevicePathToTextProtocol->ConvertDevicePathToText(BdsLoadOption->FilePathList,TRUE,TRUE);
-
-      Print(L"\t- %s\n",DevicePathTxt);
-      OptionalData = BdsLoadOption->OptionalData;
-      LoaderType = (ARM_BDS_LOADER_TYPE)ReadUnaligned32 ((CONST UINT32*)&OptionalData->Header.LoaderType);
-      if ((LoaderType == BDS_LOADER_KERNEL_LINUX_ATAG) || (LoaderType == BDS_LOADER_KERNEL_LINUX_FDT)) {
-        Print (L"\t- Arguments: %a\n",&OptionalData->Arguments.LinuxArguments + 1);
-      }
-
-      FreePool(DevicePathTxt);
-    DEBUG_CODE_END();
-
-    BootOptionCount++;
-  }
-
-  // Check if a valid boot option(s) is found
-  if (BootOptionCount == 0) {
-    if (StrCmp (InputStatement, DELETE_BOOT_ENTRY) == 0) {
-      Print (L"Nothing to remove!\n");
-    } else if (StrCmp (InputStatement, UPDATE_BOOT_ENTRY) == 0) {
-      Print (L"Couldn't find valid boot entries\n");
-    } else{
-      Print (L"No supported Boot Entry.\n");
-    }
-
-    return EFI_NOT_FOUND;
-  }
-
-  // Get the index of the boot device to delete
-  BootOptionSelected = 0;
-  while (BootOptionSelected == 0) {
-    Print(InputStatement);
-    Status = GetHIInputInteger (&BootOptionSelected);
-    if (EFI_ERROR(Status)) {
-      return Status;
-    } else if ((BootOptionSelected == 0) || (BootOptionSelected > BootOptionCount)) {
-      Print(L"Invalid input (max %d)\n",BootOptionCount);
-      BootOptionSelected = 0;
-    }
-  }
-
-  // Get the structure of the Boot device to delete
-  Index = 1;
-  for (Entry = GetFirstNode (BootOptionsList);
-       !IsNull (BootOptionsList, Entry);
-       Entry = GetNextNode (BootOptionsList,Entry)
-       )
-  {
-    if (Index == BootOptionSelected) {
-      *BdsLoadOptionEntry = LOAD_OPTION_ENTRY_FROM_LINK(Entry);
-      break;
-    }
-    Index++;
-  }
-
-  return EFI_SUCCESS;
-}
-
 EFI_STATUS
 BootMenuRemoveBootOption (
   IN LIST_ENTRY *BootOptionsList
@@ -335,8 +373,9 @@ BootMenuRemoveBootOption (
   EFI_STATUS                    Status;
   BDS_LOAD_OPTION_ENTRY*        BootOptionEntry;
 
-  Status = BootMenuSelectBootOption (BootOptionsList, DELETE_BOOT_ENTRY, FALSE, &BootOptionEntry);
-  if (EFI_ERROR(Status)) {
+  DisplayBootOptions (BootOptionsList);
+  Status = SelectBootOption (BootOptionsList, DELETE_BOOT_ENTRY, &BootOptionEntry);
+  if (EFI_ERROR (Status)) {
     return Status;
   }
 
@@ -361,22 +400,20 @@ BootMenuUpdateBootOption (
   BDS_LOAD_OPTION_ENTRY         *BootOptionEntry;
   BDS_LOAD_OPTION               *BootOption;
   BDS_LOAD_OPTION_SUPPORT*      DeviceSupport;
-  ARM_BDS_LOADER_ARGUMENTS*     BootArguments;
   CHAR16                        BootDescription[BOOT_DEVICE_DESCRIPTION_MAX];
   CHAR8                         CmdLine[BOOT_DEVICE_OPTION_MAX];
+  CHAR16                        UnicodeCmdLine[BOOT_DEVICE_OPTION_MAX];
+  CHAR16                        *LinuxDevicePath;
   EFI_DEVICE_PATH               *DevicePath;
-  EFI_DEVICE_PATH               *TempInitrdPath;
-  ARM_BDS_LOADER_TYPE           BootType;
-  ARM_BDS_LOADER_OPTIONAL_DATA* OptionalData;
-  ARM_BDS_LINUX_ARGUMENTS*      LinuxArguments;
-  EFI_DEVICE_PATH               *InitrdPathNodes;
-  EFI_DEVICE_PATH               *InitrdPath;
-  UINTN                         InitrdSize;
-  UINTN                         CmdLineSize;
-  BOOLEAN                       InitrdSupport;
+  UINT8*                        OptionalData;
+  UINTN                         OptionalDataSize;
+  BOOLEAN                       IsPrintable;
+  BOOLEAN                       IsUnicode;
+  BOOLEAN                       EfiBinary;
 
-  Status = BootMenuSelectBootOption (BootOptionsList, UPDATE_BOOT_ENTRY, TRUE, &BootOptionEntry);
-  if (EFI_ERROR(Status)) {
+  DisplayBootOptions (BootOptionsList);
+  Status = SelectBootOption (BootOptionsList, UPDATE_BOOT_ENTRY, &BootOptionEntry);
+  if (EFI_ERROR (Status)) {
     return Status;
   }
   BootOption = BootOptionEntry->BdsLoadOption;
@@ -388,92 +425,114 @@ BootMenuUpdateBootOption (
     return EFI_UNSUPPORTED;
   }
 
-  Status = DeviceSupport->UpdateDevicePathNode (BootOption->FilePathList, L"EFI Application or the kernel", &DevicePath, NULL, NULL);
-  if (EFI_ERROR(Status)) {
-    Status = EFI_ABORTED;
-    goto EXIT;
-  }
-
-  OptionalData = BootOption->OptionalData;
-  BootType = (ARM_BDS_LOADER_TYPE)ReadUnaligned32 ((UINT32 *)(&OptionalData->Header.LoaderType));
-
-  if ((BootType == BDS_LOADER_KERNEL_LINUX_ATAG) || (BootType == BDS_LOADER_KERNEL_LINUX_FDT)) {
-    LinuxArguments = &OptionalData->Arguments.LinuxArguments;
-
-    CmdLineSize = ReadUnaligned16 ((CONST UINT16*)&LinuxArguments->CmdLineSize);
-
-    InitrdSize = ReadUnaligned16 ((CONST UINT16*)&LinuxArguments->InitrdSize);
-    if (InitrdSize > 0) {
-      Print(L"Keep the initrd: ");
-    } else {
-      Print(L"Add an initrd: ");
-    }
-    Status = GetHIInputBoolean (&InitrdSupport);
-    if (EFI_ERROR(Status)) {
+  EfiBinary = TRUE;
+  if (FeaturePcdGet (PcdBdsLinuxSupport) && mLinuxLoaderDevicePath) {
+    Status = DeviceSupport->UpdateDevicePathNode (BootOption->FilePathList, L"EFI Application or the kernel", &DevicePath);
+    if (EFI_ERROR (Status)) {
       Status = EFI_ABORTED;
       goto EXIT;
     }
 
-    if (InitrdSupport) {
-      if (InitrdSize > 0) {
-        // Case we update the initrd device path
-        Status = DeviceSupport->UpdateDevicePathNode ((EFI_DEVICE_PATH*)((UINTN)(LinuxArguments + 1) + CmdLineSize), L"initrd", &InitrdPath, NULL, NULL);
-        if (EFI_ERROR(Status) && Status != EFI_NOT_FOUND) {// EFI_NOT_FOUND is returned on empty input string, but we can boot without an initrd
-          Status = EFI_ABORTED;
-          goto EXIT;
-        }
-        InitrdSize = GetDevicePathSize (InitrdPath);
-      } else {
-        // Case we create the initrd device path
+    // Is it an EFI application?
+    Status = IsEfiBinary (DevicePath, &EfiBinary);
+    if (EFI_ERROR (Status)) {
+      Status = EFI_ABORTED;
+      goto EXIT;
+    }
 
-        Status = DeviceSupport->CreateDevicePathNode (L"initrd", &InitrdPathNodes, NULL, NULL);
-        if (EFI_ERROR(Status) && Status != EFI_NOT_FOUND) { // EFI_NOT_FOUND is returned on empty input string, but we can boot without an initrd
-          Status = EFI_ABORTED;
-          goto EXIT;
-        }
+    if (EfiBinary == FALSE) {
+      Print (L"It is assumed the binary is a Linux kernel and the embedded Linux Loader is going to be used.\n");
+      Print (L"Supported command line formats by the embedded Linux Loader:\n");
+      Print (L"- <EFI device path of the Linux kernel> -c \"<Linux kernel command line>\"\n");
+      Print (L"- <EFI device path of the Linux kernel> -c \"<Linux kernel command line>\" -f <EFI Device Path of the Linux initrd>\n");
+      Print (L"- <EFI device path of the Linux kernel> -c \"<Linux kernel command line>\" -a <Machine Type for ATAG Linux kernel>\n");
 
-        if (InitrdPathNodes != NULL) {
-          // Duplicate Linux kernel Device Path
-          TempInitrdPath = DuplicateDevicePath (BootOption->FilePathList);
-          // Replace Linux kernel Node by EndNode
-          SetDevicePathEndNode (GetLastDevicePathNode (TempInitrdPath));
-          // Append the Device Path to the selected device path
-          InitrdPath = AppendDevicePath (TempInitrdPath, (CONST EFI_DEVICE_PATH_PROTOCOL *)InitrdPathNodes);
-          FreePool (TempInitrdPath);
-          if (InitrdPath == NULL) {
-            Status = EFI_OUT_OF_RESOURCES;
-            goto EXIT;
-          }
-          InitrdSize = GetDevicePathSize (InitrdPath);
+      // Copy the Linux path into the command line
+      LinuxDevicePath = ConvertDevicePathToText (DevicePath, FALSE, FALSE);
+      CopyMem (UnicodeCmdLine, LinuxDevicePath, MAX (sizeof (UnicodeCmdLine), StrSize (LinuxDevicePath)));
+      FreePool (LinuxDevicePath);
+
+      // Free the generated Device Path
+      FreePool (DevicePath);
+      // and use the embedded Linux Loader as the EFI application
+      DevicePath = mLinuxLoaderDevicePath;
+
+      // The command line is a unicode printable string
+      IsPrintable = TRUE;
+      IsUnicode = TRUE;
+    }
+  } else {
+    Status = DeviceSupport->UpdateDevicePathNode (BootOption->FilePathList, L"EFI Application", &DevicePath);
+    if (EFI_ERROR (Status)) {
+      Status = EFI_ABORTED;
+      goto EXIT;
+    }
+  }
+
+  Print (L"Arguments to pass to the EFI Application: ");
+
+  // When the command line has not been initialized by the embedded Linux loader earlier
+  if (EfiBinary) {
+    if (BootOption->OptionalDataSize > 0) {
+      IsPrintable = IsPrintableString (BootOption->OptionalData, &IsUnicode);
+      if (IsPrintable) {
+          //
+          // The size in bytes of the string, final zero included, should
+          // be equal to or at least lower than "BootOption->OptionalDataSize"
+          // and the "IsPrintableString()" has already tested that the length
+          // in number of characters is smaller than BOOT_DEVICE_OPTION_MAX,
+          // final '\0' included. We can thus copy the string for editing
+          // using "CopyMem()". Furthermore, note that in the case of an Unicode
+          // string "StrnCpy()" and "StrCpy()" can not be used to copy the
+          // string because the data pointed to by "BootOption->OptionalData"
+          // is not necessarily 2-byte aligned.
+          //
+        if (IsUnicode) {
+          CopyMem (
+            UnicodeCmdLine, BootOption->OptionalData,
+            MIN (sizeof (UnicodeCmdLine),
+                 BootOption->OptionalDataSize)
+            );
         } else {
-          InitrdPath = NULL;
+          CopyMem (
+            CmdLine, BootOption->OptionalData,
+            MIN (sizeof (CmdLine),
+                 BootOption->OptionalDataSize)
+            );
         }
       }
     } else {
-      InitrdSize = 0;
+      UnicodeCmdLine[0] = L'\0';
+      IsPrintable = TRUE;
+      IsUnicode = TRUE;
     }
+  }
 
-    Print(L"Arguments to pass to the binary: ");
-    if (CmdLineSize > 0) {
-      AsciiStrnCpy(CmdLine, (CONST CHAR8*)(LinuxArguments + 1), CmdLineSize);
+  // We do not request arguments for OptionalData that cannot be printed
+  if (IsPrintable) {
+    if (IsUnicode) {
+      Status = EditHIInputStr (UnicodeCmdLine, BOOT_DEVICE_OPTION_MAX);
+      if (EFI_ERROR (Status)) {
+        Status = EFI_ABORTED;
+        goto FREE_DEVICE_PATH;
+      }
+
+      OptionalData = (UINT8*)UnicodeCmdLine;
+      OptionalDataSize = StrSize (UnicodeCmdLine);
     } else {
-      CmdLine[0] = '\0';
-    }
-    Status = EditHIInputAscii (CmdLine, BOOT_DEVICE_OPTION_MAX);
-    if (EFI_ERROR(Status)) {
-      Status = EFI_ABORTED;
-      goto FREE_DEVICE_PATH;
-    }
+      Status = EditHIInputAscii (CmdLine, BOOT_DEVICE_OPTION_MAX);
+      if (EFI_ERROR (Status)) {
+        Status = EFI_ABORTED;
+        goto FREE_DEVICE_PATH;
+      }
 
-    CmdLineSize = AsciiStrSize (CmdLine);
-
-    BootArguments = (ARM_BDS_LOADER_ARGUMENTS*)AllocatePool(sizeof(ARM_BDS_LOADER_ARGUMENTS) + CmdLineSize + InitrdSize);
-    BootArguments->LinuxArguments.CmdLineSize = CmdLineSize;
-    BootArguments->LinuxArguments.InitrdSize = InitrdSize;
-    CopyMem (&BootArguments->LinuxArguments + 1, CmdLine, CmdLineSize);
-    CopyMem ((VOID*)((UINTN)(&BootArguments->LinuxArguments + 1) + CmdLineSize), InitrdPath, InitrdSize);
+      OptionalData = (UINT8*)CmdLine;
+      OptionalDataSize = AsciiStrSize (CmdLine);
+    }
   } else {
-    BootArguments = NULL;
+    // We keep the former OptionalData
+    OptionalData = BootOption->OptionalData;
+    OptionalDataSize = BootOption->OptionalDataSize;
   }
 
   Print(L"Description for this new Entry: ");
@@ -485,7 +544,7 @@ BootMenuUpdateBootOption (
   }
 
   // Update the entry
-  Status = BootOptionUpdate (BootOption, BootOption->Attributes, BootDescription, DevicePath, BootType, BootArguments);
+  Status = BootOptionUpdate (BootOption, BootOption->Attributes, BootDescription, DevicePath, OptionalData, OptionalDataSize);
 
 FREE_DEVICE_PATH:
   FreePool (DevicePath);
@@ -497,58 +556,354 @@ EXIT:
   return Status;
 }
 
+/**
+  Reorder boot options
+
+  Ask for the boot option to move and then move it when up or down arrows
+  are pressed. This function is called when the user selects the "Reorder Boot
+  Device Entries" entry in the boot manager menu.
+  The order of the boot options in BootOptionList and in the UEFI BootOrder
+  global variable are kept coherent until the user confirm his reordering (ie:
+  he does not exit by pressing escape).
+
+  @param[in]  BootOptionsList  List of the boot devices constructed in
+                               BootMenuMain()
+
+  @retval  EFI_SUCCESS   No error encountered.
+  @retval  !EFI_SUCCESS  An error has occured either in the selection of the
+                         boot option to move or while interacting with the user.
+
+**/
+STATIC
+EFI_STATUS
+BootMenuReorderBootOptions (
+  IN LIST_ENTRY *BootOptionsList
+  )
+{
+  EFI_STATUS              Status;
+  BDS_LOAD_OPTION_ENTRY  *BootOptionEntry;
+  LIST_ENTRY             *SelectedEntry;
+  LIST_ENTRY             *PrevEntry;
+  BOOLEAN                 Move;
+  BOOLEAN                 Save;
+  BOOLEAN                 Cancel;
+  UINTN                   WaitIndex;
+  EFI_INPUT_KEY           Key;
+  LIST_ENTRY             *SecondEntry;
+  UINTN                   BootOrderSize;
+  UINT16                 *BootOrder;
+  LIST_ENTRY             *Entry;
+  UINTN                   Index;
+
+  DisplayBootOptions (BootOptionsList);
+
+  // Ask to select the boot option to move
+  while (TRUE) {
+    Status = SelectBootOption (BootOptionsList, MOVE_BOOT_ENTRY, &BootOptionEntry);
+    if (EFI_ERROR (Status)) {
+      goto ErrorExit;
+    }
+
+    SelectedEntry = &BootOptionEntry->Link;
+    SecondEntry = NULL;
+    // Note down the previous entry in the list to be able to cancel changes
+    PrevEntry = GetPreviousNode (BootOptionsList, SelectedEntry);
+
+    //  Start of interaction
+    while (TRUE) {
+      Print (
+        L"* Use up/down arrows to move the entry '%s'",
+        BootOptionEntry->BdsLoadOption->Description
+        );
+
+      // Wait for a move, save or cancel request
+      Move   = FALSE;
+      Save   = FALSE;
+      Cancel = FALSE;
+      do {
+        Status = gBS->WaitForEvent (1, &gST->ConIn->WaitForKey, &WaitIndex);
+        if (!EFI_ERROR (Status)) {
+          Status = gST->ConIn->ReadKeyStroke (gST->ConIn, &Key);
+        }
+        if (EFI_ERROR (Status)) {
+          Print (L"\n");
+          goto ErrorExit;
+        }
+
+        switch (Key.ScanCode) {
+        case SCAN_NULL:
+          Save = (Key.UnicodeChar == CHAR_LINEFEED)        ||
+                 (Key.UnicodeChar == CHAR_CARRIAGE_RETURN) ||
+                 (Key.UnicodeChar == 0x7f);
+          break;
+
+        case SCAN_UP:
+          SecondEntry = GetPreviousNode (BootOptionsList, SelectedEntry);
+          Move = SecondEntry != BootOptionsList;
+          break;
+
+        case SCAN_DOWN:
+          SecondEntry = GetNextNode (BootOptionsList, SelectedEntry);
+          Move = SecondEntry != BootOptionsList;
+          break;
+
+        case SCAN_ESC:
+          Cancel = TRUE;
+          break;
+        }
+      } while ((!Move) && (!Save) && (!Cancel));
+
+      if (Move) {
+        if ((SelectedEntry != NULL) && (SecondEntry != NULL)) {
+          SwapListEntries (SelectedEntry, SecondEntry);
+        }
+      } else {
+        if (Save) {
+          Status = GetGlobalEnvironmentVariable (
+                    L"BootOrder", NULL, &BootOrderSize, (VOID**)&BootOrder
+                    );
+          BootOrderSize /= sizeof (UINT16);
+
+          if (!EFI_ERROR (Status)) {
+            // The order of the boot options in the 'BootOptionsList' is the
+            // new order that has been just defined by the user. Save this new
+            // order in "BootOrder" UEFI global variable.
+            Entry = GetFirstNode (BootOptionsList);
+            for (Index = 0; Index < BootOrderSize; Index++) {
+              BootOrder[Index] = (LOAD_OPTION_FROM_LINK (Entry))->LoadOptionIndex;
+              Entry = GetNextNode (BootOptionsList, Entry);
+            }
+            Status = gRT->SetVariable (
+                           (CHAR16*)L"BootOrder",
+                           &gEfiGlobalVariableGuid,
+                           EFI_VARIABLE_NON_VOLATILE       |
+                           EFI_VARIABLE_BOOTSERVICE_ACCESS |
+                           EFI_VARIABLE_RUNTIME_ACCESS,
+                           BootOrderSize * sizeof (UINT16),
+                           BootOrder
+                           );
+            FreePool (BootOrder);
+          }
+
+          if (EFI_ERROR (Status)) {
+            Print (L"\nAn error occurred, move not completed!\n");
+            Cancel = TRUE;
+          }
+        }
+
+        if (Cancel) {
+          //
+          // Restore initial position of the selected boot option
+          //
+          RemoveEntryList (SelectedEntry);
+          InsertHeadList (PrevEntry, SelectedEntry);
+        }
+      }
+
+      Print (L"\n");
+      DisplayBootOptions (BootOptionsList);
+      // Saved or cancelled, back to the choice of boot option to move
+      if (!Move) {
+        break;
+      }
+    }
+  }
+
+ErrorExit:
+  return Status ;
+}
+
 EFI_STATUS
 UpdateFdtPath (
   IN LIST_ENTRY *BootOptionsList
   )
 {
   EFI_STATUS                Status;
-  UINTN                     FdtDevicePathSize;
   BDS_SUPPORTED_DEVICE      *SupportedBootDevice;
   EFI_DEVICE_PATH_PROTOCOL  *FdtDevicePathNodes;
   EFI_DEVICE_PATH_PROTOCOL  *FdtDevicePath;
+  CHAR16                    *FdtTextDevicePath;
+  EFI_PHYSICAL_ADDRESS      FdtBlobBase;
+  UINTN                     FdtBlobSize;
+  UINTN                     NumPages;
+  EFI_PHYSICAL_ADDRESS      FdtConfigurationTableBase;
+
+  SupportedBootDevice = NULL;
 
   Status = SelectBootDevice (&SupportedBootDevice);
-  if (EFI_ERROR(Status)) {
+  if (EFI_ERROR (Status)) {
     Status = EFI_ABORTED;
     goto EXIT;
   }
 
   // Create the specific device path node
-  Status = SupportedBootDevice->Support->CreateDevicePathNode (L"FDT blob", &FdtDevicePathNodes, NULL, NULL);
-  if (EFI_ERROR(Status)) {
+  Status = SupportedBootDevice->Support->CreateDevicePathNode (L"FDT blob", &FdtDevicePathNodes);
+  if (EFI_ERROR (Status)) {
     Status = EFI_ABORTED;
     goto EXIT;
   }
 
   if (FdtDevicePathNodes != NULL) {
-    // Append the Device Path node to the select device path
+    Status = EFI_OUT_OF_RESOURCES;
+
     FdtDevicePath = AppendDevicePath (SupportedBootDevice->DevicePathProtocol, FdtDevicePathNodes);
-    FdtDevicePathSize = GetDevicePathSize (FdtDevicePath);
+    FreePool (FdtDevicePathNodes);
+    if (FdtDevicePath == NULL) {
+      goto EXIT;
+    }
+
+    FdtTextDevicePath = ConvertDevicePathToText (FdtDevicePath, TRUE, TRUE);
+    if (FdtTextDevicePath == NULL) {
+      goto EXIT;
+    }
+
     Status = gRT->SetVariable (
                     (CHAR16*)L"Fdt",
-                    &gArmGlobalVariableGuid,
-                    EFI_VARIABLE_RUNTIME_ACCESS | EFI_VARIABLE_NON_VOLATILE | EFI_VARIABLE_BOOTSERVICE_ACCESS,
-                    FdtDevicePathSize,
-                    FdtDevicePath
+                    &gFdtVariableGuid,
+                    EFI_VARIABLE_RUNTIME_ACCESS |
+                    EFI_VARIABLE_NON_VOLATILE   |
+                    EFI_VARIABLE_BOOTSERVICE_ACCESS,
+                    StrSize (FdtTextDevicePath),
+                    FdtTextDevicePath
                     );
-    ASSERT_EFI_ERROR(Status);
+    ASSERT_EFI_ERROR (Status);
+    FreePool (FdtTextDevicePath);
   } else {
-    gRT->SetVariable (
+    Status = gRT->SetVariable (
            (CHAR16*)L"Fdt",
-           &gArmGlobalVariableGuid,
-           EFI_VARIABLE_RUNTIME_ACCESS | EFI_VARIABLE_NON_VOLATILE | EFI_VARIABLE_BOOTSERVICE_ACCESS,
+           &gFdtVariableGuid,
+           EFI_VARIABLE_RUNTIME_ACCESS |
+           EFI_VARIABLE_NON_VOLATILE   |
+           EFI_VARIABLE_BOOTSERVICE_ACCESS,
            0,
            NULL
            );
-    ASSERT_EFI_ERROR(Status);
+    ASSERT_EFI_ERROR (Status);
+    return Status;
+  }
+
+  //
+  // Try to load FDT from the new EFI Device Path
+  //
+
+  //
+  // Load the FDT given its device path.
+  // This operation may fail if the device path is not supported.
+  //
+  FdtBlobBase = 0;
+  NumPages    = 0;
+  Status = BdsLoadImage (FdtDevicePath, AllocateAnyPages, &FdtBlobBase, &FdtBlobSize);
+  FreePool (FdtDevicePath);
+
+  if (EFI_ERROR (Status)) {
+    goto EXIT_LOAD_FDT;
+  }
+
+  // Check the FDT header is valid. We only make this check in DEBUG mode in
+  // case the FDT header change on production device and this ASSERT() becomes
+  // not valid.
+  ASSERT (fdt_check_header ((VOID*)(UINTN)FdtBlobBase) == 0);
+
+  //
+  // Ensure the Size of the Device Tree is smaller than the size of the read file
+  //
+  ASSERT ((UINTN)fdt_totalsize ((VOID*)(UINTN)FdtBlobBase) <= FdtBlobSize);
+
+  //
+  // Store the FDT as Runtime Service Data to prevent the Kernel from
+  // overwritting its data.
+  //
+  NumPages = EFI_SIZE_TO_PAGES (FdtBlobSize);
+  Status = gBS->AllocatePages (
+                  AllocateAnyPages, EfiRuntimeServicesData,
+                  NumPages, &FdtConfigurationTableBase
+                  );
+  if (EFI_ERROR (Status)) {
+    goto EXIT_LOAD_FDT;
+  }
+  gBS->CopyMem (
+    (VOID*)(UINTN)FdtConfigurationTableBase,
+    (VOID*)(UINTN)FdtBlobBase,
+    FdtBlobSize
+    );
+
+  //
+  // Install the FDT into the Configuration Table
+  //
+  Status = gBS->InstallConfigurationTable (
+                  &gFdtTableGuid,
+                  (VOID*)(UINTN)FdtConfigurationTableBase
+                  );
+  if (EFI_ERROR (Status)) {
+    gBS->FreePages (FdtConfigurationTableBase, NumPages);
+  }
+
+EXIT_LOAD_FDT:
+  if (EFI_ERROR (Status)) {
+    Print (L"\nWarning: Did not manage to install the new device tree. Try to restart the platform.\n");
+  }
+
+  if (FdtBlobBase != 0) {
+    gBS->FreePages (FdtBlobBase, NumPages);
   }
 
 EXIT:
   if (Status == EFI_ABORTED) {
-    Print(L"\n");
+    Print (L"\n");
   }
-  FreePool(SupportedBootDevice);
+
+  if (SupportedBootDevice != NULL) {
+    FreePool (SupportedBootDevice);
+  }
+
+  return Status;
+}
+
+/**
+  Set boot timeout
+
+  Ask for the boot timeout in seconds and if the input succeeds assign the
+  input value to the UEFI global variable "Timeout". This function is called
+  when the user selects the "Set Boot Timeout" of the boot manager menu.
+
+  @param[in]  BootOptionsList  List of the boot devices, not used here
+
+  @retval  EFI_SUCCESS   Boot timeout in second retrieved from the standard
+                         input and assigned to the UEFI "Timeout" global
+                         variable
+  @retval  !EFI_SUCCESS  Either the input or the setting of the UEFI global
+                         variable "Timeout" has failed.
+**/
+EFI_STATUS
+STATIC
+BootMenuSetBootTimeout (
+  IN LIST_ENTRY *BootOptionsList
+  )
+{
+  EFI_STATUS  Status;
+  UINTN       Input;
+  UINT16      Timeout;
+
+  Print (L"Timeout duration (in seconds): ");
+  Status = GetHIInputInteger (&Input);
+  if (EFI_ERROR (Status)) {
+    Print (L"\n");
+    goto ErrorExit;
+  }
+
+  Timeout = Input;
+  Status = gRT->SetVariable (
+                 (CHAR16*)L"Timeout",
+                 &gEfiGlobalVariableGuid,
+                 EFI_VARIABLE_NON_VOLATILE       |
+                 EFI_VARIABLE_BOOTSERVICE_ACCESS |
+                 EFI_VARIABLE_RUNTIME_ACCESS,
+                 sizeof (UINT16),
+                 &Timeout
+                 );
+  ASSERT_EFI_ERROR (Status);
+
+ErrorExit:
   return Status;
 }
 
@@ -559,7 +914,9 @@ struct BOOT_MANAGER_ENTRY {
     { L"Add Boot Device Entry", BootMenuAddBootOption },
     { L"Update Boot Device Entry", BootMenuUpdateBootOption },
     { L"Remove Boot Device Entry", BootMenuRemoveBootOption },
+    { L"Reorder Boot Device Entries", BootMenuReorderBootOptions },
     { L"Update FDT path", UpdateFdtPath },
+    { L"Set Boot Timeout", BootMenuSetBootTimeout },
 };
 
 EFI_STATUS
@@ -601,17 +958,27 @@ BootShell (
   IN LIST_ENTRY *BootOptionsList
   )
 {
-  EFI_STATUS Status;
+  EFI_STATUS       Status;
+  EFI_DEVICE_PATH* EfiShellDevicePath;
 
-  // Start EFI Shell
-  Status = BdsLoadApplication (mImageHandle, L"Shell", 0, NULL);
+  // Find the EFI Shell
+  Status = LocateEfiApplicationInFvByName (L"Shell", &EfiShellDevicePath);
   if (Status == EFI_NOT_FOUND) {
     Print (L"Error: EFI Application not found.\n");
-  } else if (EFI_ERROR(Status)) {
-    Print (L"Error: Status Code: 0x%X\n",(UINT32)Status);
-  }
+    return Status;
+  } else if (EFI_ERROR (Status)) {
+    Print (L"Error: Status Code: 0x%X\n", (UINT32)Status);
+    return Status;
+  } else {
+    // Need to connect every drivers to ensure no dependencies are missing for the application
+    Status = BdsConnectAllDrivers ();
+    if (EFI_ERROR (Status)) {
+      DEBUG ((EFI_D_ERROR, "FAIL to connect all drivers\n"));
+      return Status;
+    }
 
-  return Status;
+    return BdsStartEfiApplication (gImageHandle, EfiShellDevicePath, 0, NULL);
+  }
 }
 
 struct BOOT_MAIN_ENTRY {
@@ -621,7 +988,6 @@ struct BOOT_MAIN_ENTRY {
     { L"Shell", BootShell },
     { L"Boot Manager", BootMenuManager },
 };
-
 
 EFI_STATUS
 BootMenuMain (
@@ -637,9 +1003,16 @@ BootMenuMain (
   UINTN                         BootOptionSelected;
   UINTN                         Index;
   UINTN                         BootMainEntryCount;
+  BOOLEAN                       IsUnicode;
 
-  BootOption              = NULL;
+  BootOption         = NULL;
   BootMainEntryCount = sizeof(BootMainEntries) / sizeof(struct BOOT_MAIN_ENTRY);
+
+  if (FeaturePcdGet (PcdBdsLinuxSupport)) {
+    // Check Linux Loader is present
+    Status = LocateEfiApplicationInFvByGuid (&mLinuxLoaderAppGuid, &mLinuxLoaderDevicePath);
+    ASSERT_EFI_ERROR (Status);
+  }
 
   while (TRUE) {
     // Get Boot#### list
@@ -660,9 +1033,6 @@ BootMenuMain (
       DEBUG_CODE_BEGIN();
         CHAR16*                           DevicePathTxt;
         EFI_DEVICE_PATH_TO_TEXT_PROTOCOL* DevicePathToTextProtocol;
-        ARM_BDS_LOADER_OPTIONAL_DATA*     OptionalData;
-        UINTN                             CmdLineSize;
-        ARM_BDS_LOADER_TYPE               LoaderType;
 
         Status = gBS->LocateProtocol (&gEfiDevicePathToTextProtocolGuid, NULL, (VOID **)&DevicePathToTextProtocol);
         if (EFI_ERROR(Status)) {
@@ -674,35 +1044,13 @@ BootMenuMain (
 
         Print(L"\t- %s\n",DevicePathTxt);
 
-        // If it is a supported BootEntry then print its details
-        if (IS_ARM_BDS_BOOTENTRY (BootOption)) {
-          OptionalData = BootOption->OptionalData;
-          LoaderType = (ARM_BDS_LOADER_TYPE)ReadUnaligned32 ((CONST UINT32*)&OptionalData->Header.LoaderType);
-          if ((LoaderType == BDS_LOADER_KERNEL_LINUX_ATAG) || (LoaderType == BDS_LOADER_KERNEL_LINUX_FDT)) {
-            if (ReadUnaligned16 (&OptionalData->Arguments.LinuxArguments.InitrdSize) > 0) {
-              CmdLineSize = ReadUnaligned16 (&OptionalData->Arguments.LinuxArguments.CmdLineSize);
-              DevicePathTxt = DevicePathToTextProtocol->ConvertDevicePathToText (
-                  GetAlignedDevicePath ((EFI_DEVICE_PATH*)((UINTN)(&OptionalData->Arguments.LinuxArguments + 1) + CmdLineSize)), TRUE, TRUE);
-              Print(L"\t- Initrd: %s\n", DevicePathTxt);
+        if (BootOption->OptionalData != NULL) {
+          if (IsPrintableString (BootOption->OptionalData, &IsUnicode)) {
+            if (IsUnicode) {
+              Print (L"\t- Arguments: %s\n", BootOption->OptionalData);
+            } else {
+              AsciiPrint ("\t- Arguments: %a\n", BootOption->OptionalData);
             }
-            Print(L"\t- Arguments: %a\n", (&OptionalData->Arguments.LinuxArguments + 1));
-          }
-
-          switch (LoaderType) {
-            case BDS_LOADER_EFI_APPLICATION:
-              Print(L"\t- LoaderType: EFI Application\n");
-              break;
-
-            case BDS_LOADER_KERNEL_LINUX_ATAG:
-              Print(L"\t- LoaderType: Linux kernel with ATAG support\n");
-              break;
-
-            case BDS_LOADER_KERNEL_LINUX_FDT:
-              Print(L"\t- LoaderType: Linux kernel with FDT support\n");
-              break;
-
-            default:
-              Print(L"\t- LoaderType: Not recognized (%d)\n", LoaderType);
           }
         }
         FreePool(DevicePathTxt);

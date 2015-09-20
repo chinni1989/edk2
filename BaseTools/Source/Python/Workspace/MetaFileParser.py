@@ -1,7 +1,8 @@
 ## @file
 # This file is used to parse meta files
 #
-# Copyright (c) 2008 - 2012, Intel Corporation. All rights reserved.<BR>
+# Copyright (c) 2008 - 2015, Intel Corporation. All rights reserved.<BR>
+# Copyright (c) 2015, Hewlett Packard Enterprise Development, L.P.<BR>
 # This program and the accompanying materials
 # are licensed and made available under the terms and conditions of the BSD License
 # which accompanies this distribution.  The full text of the license may be found at
@@ -14,7 +15,7 @@
 ##
 # Import Modules
 #
-import os
+import Common.LongFilePathOs as os
 import re
 import time
 import copy
@@ -28,8 +29,10 @@ from Common.String import *
 from Common.Misc import GuidStructureStringToGuidString, CheckPcdDatum, PathClass, AnalyzePcdData, AnalyzeDscPcd
 from Common.Expression import *
 from CommonDataClass.Exceptions import *
+from Common.LongFilePathSupport import OpenLongFilePath as open
 
 from MetaFileTable import MetaFileStorage
+from MetaFileCommentParser import CheckInfComment
 
 ## A decorator used to parse macro definition
 def ParseMacro(Parser):
@@ -265,6 +268,10 @@ class MetaFileParser(object):
                         Line=self._LineIndex + 1, ExtraData=self._CurrentLine);
         self._ValueList[0:1] = [self._CurrentLine]
 
+    ## Skip unsupported data for UserExtension Section
+    def _SkipUserExtension(self):
+        self._ValueList[0:1] = [self._CurrentLine]
+
     ## Section header parser
     #
     #   The section header is always in following format:
@@ -370,7 +377,8 @@ class MetaFileParser(object):
                 File=self.MetaFile,
                 Line=self._LineIndex + 1
                 )
-
+    def GetValidExpression(self, TokenSpaceGuid, PcdCName):
+        return self._Table.GetValidExpression(TokenSpaceGuid, PcdCName)
     def _GetMacros(self):
         Macros = {}
         Macros.update(self._FileLocalMacros)
@@ -590,6 +598,8 @@ class InfParser(MetaFileParser):
                 continue
             if Comment:
                 Comments.append((Comment, Index + 1))
+            if GlobalData.gOptions and GlobalData.gOptions.CheckUsage:
+                CheckInfComment(self._SectionType, Comments, str(self.MetaFile), Index + 1, self._ValueList)
             #
             # Model, Value1, Value2, Value3, Arch, Platform, BelongsToItem=-1,
             # LineBegin=-1, ColumnBegin=-1, LineEnd=-1, ColumnEnd=-1, Enabled=-1
@@ -755,7 +765,7 @@ class InfParser(MetaFileParser):
         MODEL_EFI_PPI                   :   MetaFileParser._CommonParser,
         MODEL_EFI_DEPEX                 :   _DepexParser,
         MODEL_EFI_BINARY_FILE           :   _BinaryFileParser,
-        MODEL_META_DATA_USER_EXTENSION  :   MetaFileParser._Skip,
+        MODEL_META_DATA_USER_EXTENSION  :   MetaFileParser._SkipUserExtension,
     }
 
 ## DSC file parser class
@@ -795,6 +805,7 @@ class DscParser(MetaFileParser):
         TAB_ELSE_IF.upper()                         :   MODEL_META_DATA_CONDITIONAL_STATEMENT_ELSEIF,
         TAB_ELSE.upper()                            :   MODEL_META_DATA_CONDITIONAL_STATEMENT_ELSE,
         TAB_END_IF.upper()                          :   MODEL_META_DATA_CONDITIONAL_STATEMENT_ENDIF,
+        TAB_USER_EXTENSIONS.upper()                 :   MODEL_META_DATA_USER_EXTENSION,
     }
 
     # Valid names in define section
@@ -805,6 +816,7 @@ class DscParser(MetaFileParser):
         "PLATFORM_VERSION",
         "SKUID_IDENTIFIER",
         "PCD_INFO_GENERATION",
+        "PCD_VAR_CHECK_GENERATION",
         "SUPPORTED_ARCHITECTURES",
         "BUILD_TARGETS",
         "OUTPUT_DIRECTORY",
@@ -815,6 +827,10 @@ class DscParser(MetaFileParser):
         "TIME_STAMP_FILE",
         "VPD_TOOL_GUID",
         "FIX_LOAD_TOP_MEMORY_ADDRESS"
+    ]
+
+    SubSectionDefineKeywords = [
+        "FILE_GUID"
     ]
 
     SymbolPattern = ValueExpression.SymbolPattern
@@ -995,11 +1011,6 @@ class DscParser(MetaFileParser):
                                 File=self.MetaFile, Line=self._LineIndex + 1,
                                 ExtraData=self._CurrentLine)
             self._DirectiveStack.append((ItemType, self._LineIndex + 1, self._CurrentLine))
-        elif self._From > 0:
-            EdkLogger.error('Parser', FORMAT_INVALID,
-                            "No '!include' allowed in included file",
-                            ExtraData=self._CurrentLine, File=self.MetaFile,
-                            Line=self._LineIndex + 1)
 
         #
         # Model, Value1, Value2, Value3, Arch, ModuleType, BelongsToItem=-1, BelongsToFile=-1,
@@ -1035,13 +1046,15 @@ class DscParser(MetaFileParser):
         if not self._ValueList[2]:
             EdkLogger.error('Parser', FORMAT_INVALID, "No value specified",
                             ExtraData=self._CurrentLine, File=self.MetaFile, Line=self._LineIndex + 1)
-        if not self._ValueList[1] in self.DefineKeywords:
+        if (not self._ValueList[1] in self.DefineKeywords and
+            (self._InSubsection and self._ValueList[1] not in self.SubSectionDefineKeywords)):
             EdkLogger.error('Parser', FORMAT_INVALID,
                             "Unknown keyword found: %s. "
                             "If this is a macro you must "
                             "add it as a DEFINE in the DSC" % self._ValueList[1],
                             ExtraData=self._CurrentLine, File=self.MetaFile, Line=self._LineIndex + 1)
-        self._Defines[self._ValueList[1]] = self._ValueList[2]
+        if not self._InSubsection:
+            self._Defines[self._ValueList[1]] = self._ValueList[2]
         self._ItemType = self.DataType[TAB_DSC_DEFINES.upper()]
 
     @ParseMacro
@@ -1204,7 +1217,7 @@ class DscParser(MetaFileParser):
             MODEL_META_DATA_COMPONENT_SOURCE_OVERRIDE_PATH  :   self.__ProcessSourceOverridePath,
             MODEL_META_DATA_BUILD_OPTION                    :   self.__ProcessBuildOption,
             MODEL_UNKNOWN                                   :   self._Skip,
-            MODEL_META_DATA_USER_EXTENSION                  :   self._Skip,
+            MODEL_META_DATA_USER_EXTENSION                  :   self._SkipUserExtension,
         }
 
         self._Table = MetaFileStorage(self._RawTable.Cur, self.MetaFile, MODEL_FILE_DSC, True)
@@ -1220,6 +1233,7 @@ class DscParser(MetaFileParser):
         self.__RetrievePcdValue()
         self._Content = self._RawTable.GetAll()
         self._ContentIndex = 0
+        self._InSubsection = False
         while self._ContentIndex < len(self._Content) :
             Id, self._ItemType, V1, V2, V3, S1, S2, Owner, self._From, \
                 LineStart, ColStart, LineEnd, ColEnd, Enabled = self._Content[self._ContentIndex]
@@ -1248,6 +1262,10 @@ class DscParser(MetaFileParser):
             self._LineIndex = LineStart - 1
             self._ValueList = [V1, V2, V3]
 
+            if Owner > 0 and Owner in self._IdMapping:
+                self._InSubsection = True
+            else:
+                self._InSubsection = False
             try:
                 Processer[self._ItemType]()
             except EvaluationException, Excpt:
@@ -1318,18 +1336,6 @@ class DscParser(MetaFileParser):
             self._SubsectionType = MODEL_UNKNOWN
 
     def __RetrievePcdValue(self):
-        Records = self._RawTable.Query(MODEL_PCD_FEATURE_FLAG, BelongsToItem= -1.0)
-        for TokenSpaceGuid, PcdName, Value, Dummy2, Dummy3, ID, Line in Records:
-            Name = TokenSpaceGuid + '.' + PcdName
-            ValList, Valid, Index = AnalyzeDscPcd(Value, MODEL_PCD_FEATURE_FLAG)
-            self._Symbols[Name] = ValList[Index]
-
-        Records = self._RawTable.Query(MODEL_PCD_FIXED_AT_BUILD, BelongsToItem= -1.0)
-        for TokenSpaceGuid, PcdName, Value, Dummy2, Dummy3, ID, Line in Records:
-            Name = TokenSpaceGuid + '.' + PcdName
-            ValList, Valid, Index = AnalyzeDscPcd(Value, MODEL_PCD_FIXED_AT_BUILD)
-            self._Symbols[Name] = ValList[Index]
-
         Content = open(str(self.MetaFile), 'r').readlines()
         GlobalData.gPlatformOtherPcds['DSCFILE'] = str(self.MetaFile)
         for PcdType in (MODEL_PCD_PATCHABLE_IN_MODULE, MODEL_PCD_DYNAMIC_DEFAULT, MODEL_PCD_DYNAMIC_HII,
@@ -1350,6 +1356,13 @@ class DscParser(MetaFileParser):
 
         Type, Name, Value = self._ValueList
         Value = ReplaceMacro(Value, self._Macros, False)
+        #
+        # If it is <Defines>, return
+        #
+        if self._InSubsection:
+            self._ValueList = [Type, Name, Value]
+            return
+
         if self._ItemType == MODEL_META_DATA_DEFINE:
             if self._SectionType == MODEL_META_DATA_HEADER:
                 self._FileLocalMacros[Name] = Value
@@ -1462,6 +1475,12 @@ class DscParser(MetaFileParser):
             Parser = DscParser(IncludedFile1, self._FileType, IncludedFileTable,
                                Owner=Owner, From=Owner)
 
+            # Does not allow lower level included file to include upper level included file
+            if Parser._From != Owner and int(Owner) > int (Parser._From):
+                EdkLogger.error('parser', FILE_ALREADY_EXIST, File=self._FileWithError,
+                    Line=self._LineIndex + 1, ExtraData="{0} is already included at a higher level.".format(IncludedFile1))
+
+
             # set the parser status with current status
             Parser._SectionName = self._SectionName
             Parser._SectionType = self._SectionType
@@ -1515,7 +1534,9 @@ class DscParser(MetaFileParser):
         if ValList[Index] == 'False':
             ValList[Index] = '0'
 
-        GlobalData.gPlatformPcds[TAB_SPLIT.join(self._ValueList[0:2])] = PcdValue
+        if (not self._DirectiveEvalStack) or (False not in self._DirectiveEvalStack):
+            GlobalData.gPlatformPcds[TAB_SPLIT.join(self._ValueList[0:2])] = PcdValue
+            self._Symbols[TAB_SPLIT.join(self._ValueList[0:2])] = PcdValue
         self._ValueList[2] = '|'.join(ValList)
 
     def __ProcessComponent(self):
@@ -1546,7 +1567,7 @@ class DscParser(MetaFileParser):
         MODEL_META_DATA_COMPONENT_SOURCE_OVERRIDE_PATH  :   _CompponentSourceOverridePathParser,
         MODEL_META_DATA_BUILD_OPTION                    :   _BuildOptionParser,
         MODEL_UNKNOWN                                   :   MetaFileParser._Skip,
-        MODEL_META_DATA_USER_EXTENSION                  :   MetaFileParser._Skip,
+        MODEL_META_DATA_USER_EXTENSION                  :   MetaFileParser._SkipUserExtension,
         MODEL_META_DATA_SECTION_HEADER                  :   MetaFileParser._SectionHeaderParser,
         MODEL_META_DATA_SUBSECTION_HEADER               :   _SubsectionHeaderParser,
     }
@@ -1575,6 +1596,7 @@ class DecParser(MetaFileParser):
         TAB_PCDS_FEATURE_FLAG_NULL.upper()          :   MODEL_PCD_FEATURE_FLAG,
         TAB_PCDS_DYNAMIC_NULL.upper()               :   MODEL_PCD_DYNAMIC,
         TAB_PCDS_DYNAMIC_EX_NULL.upper()            :   MODEL_PCD_DYNAMIC_EX,
+        TAB_USER_EXTENSIONS.upper()                 :   MODEL_META_DATA_USER_EXTENSION,
     }
 
     ## Constructor of DecParser
@@ -1859,7 +1881,7 @@ class DecParser(MetaFileParser):
         MODEL_PCD_DYNAMIC               :   _PcdParser,
         MODEL_PCD_DYNAMIC_EX            :   _PcdParser,
         MODEL_UNKNOWN                   :   MetaFileParser._Skip,
-        MODEL_META_DATA_USER_EXTENSION  :   MetaFileParser._Skip,
+        MODEL_META_DATA_USER_EXTENSION  :   MetaFileParser._SkipUserExtension,
     }
 
 ##

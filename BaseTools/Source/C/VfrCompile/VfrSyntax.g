@@ -1,5 +1,7 @@
-/*++
-Copyright (c) 2004 - 2013, Intel Corporation. All rights reserved.<BR>
+/*++ @file
+Vfr Syntax
+
+Copyright (c) 2004 - 2015, Intel Corporation. All rights reserved.<BR>
 This program and the accompanying materials
 are licensed and made available under the terms and conditions of the BSD License
 which accompanies this distribution.  The full text of the license may be found at
@@ -7,11 +9,6 @@ http://opensource.org/licenses/bsd-license.php
 
 THE PROGRAM IS DISTRIBUTED UNDER THE BSD LICENSE ON AN "AS IS" BASIS,
 WITHOUT WARRANTIES OR REPRESENTATIONS OF ANY KIND, EITHER EXPRESS OR IMPLIED.
-
-Module Name:
-  VfrSyntax.g
-
-Abstract:
 
 --*/
 
@@ -194,6 +191,7 @@ VfrParserStart (
 #token InteractiveFlag("INTERACTIVE")           "INTERACTIVE"
 #token NVAccessFlag("NV_ACCESS")                "NV_ACCESS"
 #token ResetRequiredFlag("RESET_REQUIRED")      "RESET_REQUIRED"
+#token ReconnectRequiredFlag("RECONNECT_REQUIRED") "RECONNECT_REQUIRED"
 #token LateCheckFlag("LATE_CHECK")              "LATE_CHECK"
 #token ReadOnlyFlag("READ_ONLY")                "READ_ONLY"
 #token OptionOnlyFlag("OPTIONS_ONLY")           "OPTIONS_ONLY"
@@ -295,7 +293,7 @@ pragmaPackStackDef :
     "," ID:StringIdentifier                         << Identifier = ID->getText(); >>
   }
   {
-    "," N:Number                                    << PackAction |= VFR_PACK_ASSIGN; PackNumber = _STOU32(N->getText()); >>
+    "," N:Number                                    << PackAction |= VFR_PACK_ASSIGN; PackNumber = _STOU32(N->getText(), N->getLine()); >>
   }
                                                     << gCVfrVarDataTypeDB.Pack (LineNum, PackAction, Identifier, PackNumber); >>
   ;
@@ -305,7 +303,7 @@ pragmaPackNumber :
      UINT32 LineNum;
      UINT32 PackNumber = DEFAULT_PACK_ALIGN;
   >>
-  N:Number                                          << LineNum = N->getLine(); PackNumber = _STOU32(N->getText()); >>
+  N:Number                                          << LineNum = N->getLine(); PackNumber = _STOU32(N->getText(), N->getLine()); >>
                                                     << gCVfrVarDataTypeDB.Pack (LineNum, VFR_PACK_ASSIGN, NULL, PackNumber); >>
   ;
 
@@ -354,7 +352,7 @@ dataStructField64 :
   D:"UINT64"
   N:StringIdentifier
   {
-    OpenBracket I:Number CloseBracket               << ArrayNum = _STOU32(I->getText()); >>
+    OpenBracket I:Number CloseBracket               << ArrayNum = _STOU32(I->getText(), I->getLine()); >>
   }
   ";"                                               << _PCATCH(gCVfrVarDataTypeDB.DataTypeAddField (N->getText(), D->getText(), ArrayNum), N); >>
   ;
@@ -364,7 +362,7 @@ dataStructField32 :
   D:"UINT32"
   N:StringIdentifier
   {
-    OpenBracket I:Number CloseBracket               << ArrayNum = _STOU32(I->getText()); >>
+    OpenBracket I:Number CloseBracket               << ArrayNum = _STOU32(I->getText(), I->getLine()); >>
   }
   ";"                                               << _PCATCH(gCVfrVarDataTypeDB.DataTypeAddField (N->getText(), D->getText(), ArrayNum), N); >>
   ;
@@ -376,7 +374,7 @@ dataStructField16 :
   ("UINT16" | "CHAR16")
   N:StringIdentifier
   {
-    OpenBracket I:Number CloseBracket               << ArrayNum = _STOU32(I->getText()); >>
+    OpenBracket I:Number CloseBracket               << ArrayNum = _STOU32(I->getText(), I->getLine()); >>
   }
   ";"                                               << _PCATCH(gCVfrVarDataTypeDB.DataTypeAddField (N->getText(), (CHAR8 *) "UINT16", ArrayNum), N); >>
   ;
@@ -386,7 +384,7 @@ dataStructField8 :
   D:"UINT8"
   N:StringIdentifier
   {
-    OpenBracket I:Number CloseBracket               << ArrayNum = _STOU32(I->getText()); >>
+    OpenBracket I:Number CloseBracket               << ArrayNum = _STOU32(I->getText(), I->getLine()); >>
   }
   ";"                                               << _PCATCH(gCVfrVarDataTypeDB.DataTypeAddField (N->getText(), D->getText(), ArrayNum), N); >>
   ;
@@ -396,7 +394,7 @@ dataStructFieldBool :
   D:"BOOLEAN"
   N:StringIdentifier
   {
-    OpenBracket I:Number CloseBracket               << ArrayNum = _STOU32(I->getText()); >>
+    OpenBracket I:Number CloseBracket               << ArrayNum = _STOU32(I->getText(), I->getLine()); >>
   }
   ";"                                               << _PCATCH(gCVfrVarDataTypeDB.DataTypeAddField (N->getText(), D->getText(), ArrayNum), N); >>
   ;
@@ -406,7 +404,7 @@ dataStructFieldString :
   D:"EFI_STRING_ID"
   N:StringIdentifier
   {
-    OpenBracket I:Number CloseBracket               << ArrayNum = _STOU32(I->getText()); >>
+    OpenBracket I:Number CloseBracket               << ArrayNum = _STOU32(I->getText(), I->getLine()); >>
   }
   ";"                                               << _PCATCH(gCVfrVarDataTypeDB.DataTypeAddField (N->getText(), D->getText(), ArrayNum), N); >>
   ;
@@ -416,7 +414,7 @@ dataStructFieldDate :
   D:"EFI_HII_DATE"
   N:StringIdentifier
   {
-    OpenBracket I:Number CloseBracket               << ArrayNum = _STOU32(I->getText()); >>
+    OpenBracket I:Number CloseBracket               << ArrayNum = _STOU32(I->getText(), I->getLine()); >>
   }
   ";"                                               << _PCATCH(gCVfrVarDataTypeDB.DataTypeAddField (N->getText(), D->getText(), ArrayNum), N); >>
   ;
@@ -426,7 +424,7 @@ dataStructFieldTime :
   D:"EFI_HII_TIME"
   N:StringIdentifier
   {
-    OpenBracket I:Number CloseBracket               << ArrayNum = _STOU32(I->getText()); >>
+    OpenBracket I:Number CloseBracket               << ArrayNum = _STOU32(I->getText(), I->getLine()); >>
   }
   ";"                                               << _PCATCH(gCVfrVarDataTypeDB.DataTypeAddField (N->getText(), D->getText(), ArrayNum), N); >>
   ;
@@ -436,7 +434,7 @@ dataStructFieldRef :
   D:"EFI_HII_REF"
   N:StringIdentifier
   {
-    OpenBracket I:Number CloseBracket               << ArrayNum = _STOU32(I->getText()); >>
+    OpenBracket I:Number CloseBracket               << ArrayNum = _STOU32(I->getText(), I->getLine()); >>
   }
   ";"                                               << _PCATCH(gCVfrVarDataTypeDB.DataTypeAddField (N->getText(), D->getText(), ArrayNum), N); >>
   ;
@@ -446,7 +444,7 @@ dataStructFieldUser :
   T:StringIdentifier
   N:StringIdentifier
   {
-    OpenBracket I:Number CloseBracket               << ArrayNum = _STOU32(I->getText()); >>
+    OpenBracket I:Number CloseBracket               << ArrayNum = _STOU32(I->getText(), I->getLine()); >>
   }
   ";"                                               << _PCATCH(gCVfrVarDataTypeDB.DataTypeAddField (N->getText(), T->getText(), ArrayNum), T); >>
   ;
@@ -458,14 +456,14 @@ dataStructFieldUser :
 guidSubDefinition [EFI_GUID &Guid] :
   G4:Number "," G5:Number "," G6:Number "," G7:Number "," G8:Number "," G9:Number "," G10:Number "," G11:Number
                                                     <<
-                                                       Guid.Data4[0] = _STOU8(G4->getText());
-                                                       Guid.Data4[1] = _STOU8(G5->getText());
-                                                       Guid.Data4[2] = _STOU8(G6->getText());
-                                                       Guid.Data4[3] = _STOU8(G7->getText());
-                                                       Guid.Data4[4] = _STOU8(G8->getText());
-                                                       Guid.Data4[5] = _STOU8(G9->getText());
-                                                       Guid.Data4[6] = _STOU8(G10->getText());
-                                                       Guid.Data4[7] = _STOU8(G11->getText());
+                                                       Guid.Data4[0] = _STOU8(G4->getText(), G4->getLine());
+                                                       Guid.Data4[1] = _STOU8(G5->getText(), G5->getLine());
+                                                       Guid.Data4[2] = _STOU8(G6->getText(), G6->getLine());
+                                                       Guid.Data4[3] = _STOU8(G7->getText(), G7->getLine());
+                                                       Guid.Data4[4] = _STOU8(G8->getText(), G8->getLine());
+                                                       Guid.Data4[5] = _STOU8(G9->getText(), G9->getLine());
+                                                       Guid.Data4[6] = _STOU8(G10->getText(), G10->getLine());
+                                                       Guid.Data4[7] = _STOU8(G11->getText(), G11->getLine());
                                                     >>
   ;
 
@@ -473,9 +471,9 @@ guidDefinition [EFI_GUID &Guid] :
   OpenBrace
     G1:Number "," G2:Number "," G3:Number ","
                                                     <<
-                                                       Guid.Data1 = _STOU32 (G1->getText());
-                                                       Guid.Data2 = _STOU16 (G2->getText());
-                                                       Guid.Data3 = _STOU16 (G3->getText());
+                                                       Guid.Data1 = _STOU32 (G1->getText(), G1->getLine());
+                                                       Guid.Data2 = _STOU16 (G2->getText(), G2->getLine());
+                                                       Guid.Data3 = _STOU16 (G3->getText(), G3->getLine());
                                                     >>
     (
         OpenBrace guidSubDefinition[Guid] CloseBrace
@@ -505,10 +503,10 @@ vfrFormSetDefinition :
   {
     ClassGuid "=" guidDefinition[ClassGuid1]        << ++ClassGuidNum; >>
                   {
-                   "\|" guidDefinition[ClassGuid2]  << ++ClassGuidNum; >>
-                  }
-                  {
-                   "\|" guidDefinition[ClassGuid3]  << ++ClassGuidNum; >>
+                     "\|" guidDefinition[ClassGuid2]  << ++ClassGuidNum; >>
+                     {
+                      "\|" guidDefinition[ClassGuid3]  << ++ClassGuidNum; >>
+                     }
                   }
                   ","
   }
@@ -568,8 +566,8 @@ vfrFormSetDefinition :
                                                       if (mCompatibleMode) {
                                                         memcpy (&mFormsetGuid, &Guid, sizeof (EFI_GUID));
                                                       }
-                                                      FSObj->SetFormSetTitle (_STOSID(S1->getText()));
-                                                      FSObj->SetHelp (_STOSID(S2->getText()));
+                                                      FSObj->SetFormSetTitle (_STOSID(S1->getText(), S1->getLine()));
+                                                      FSObj->SetHelp (_STOSID(S2->getText(), S2->getLine()));
                                                     >>
   {
     FC:Class "=" classDefinition[C] ","             << {CIfrClass CObj;SET_LINE_INFO (CObj, FC); CObj.SetClass(C);} >>
@@ -656,25 +654,25 @@ vfrStatementExtension:
   Uuid "=" guidDefinition[Guid]
   {"," DataType "=" 
     (
-        U64:"UINT64" {OpenBracket AN1:Number CloseBracket <<ArrayNum = _STOU32(AN1->getText());>>}
+        U64:"UINT64" {OpenBracket AN1:Number CloseBracket <<ArrayNum = _STOU32(AN1->getText(), AN1->getLine());>>}
                                                       << TypeName = U64->getText(); LineNum = U64->getLine(); >>
-      | U32:"UINT32" {OpenBracket AN2:Number CloseBracket <<ArrayNum = _STOU32(AN2->getText());>>}
+      | U32:"UINT32" {OpenBracket AN2:Number CloseBracket <<ArrayNum = _STOU32(AN2->getText(), AN2->getLine());>>}
                                                       << TypeName = U32->getText(); LineNum = U32->getLine(); >>
-      | U16:"UINT16" {OpenBracket AN3:Number CloseBracket <<ArrayNum = _STOU32(AN3->getText());>>}
+      | U16:"UINT16" {OpenBracket AN3:Number CloseBracket <<ArrayNum = _STOU32(AN3->getText(), AN3->getLine());>>}
                                                       << TypeName = U16->getText(); LineNum = U16->getLine(); >>
-      | U8:"UINT8"   {OpenBracket AN4:Number CloseBracket <<ArrayNum = _STOU32(AN4->getText());>>}
+      | U8:"UINT8"   {OpenBracket AN4:Number CloseBracket <<ArrayNum = _STOU32(AN4->getText(), AN4->getLine());>>}
                                                       << TypeName = U8->getText(); LineNum = U8->getLine(); >>
-      | BL:"BOOLEAN" {OpenBracket AN5:Number CloseBracket <<ArrayNum = _STOU32(AN5->getText());>>}
+      | BL:"BOOLEAN" {OpenBracket AN5:Number CloseBracket <<ArrayNum = _STOU32(AN5->getText(), AN5->getLine());>>}
                                                       << TypeName = BL->getText(); LineNum = BL->getLine(); >>
-      | SI:"EFI_STRING_ID" {OpenBracket AN6:Number CloseBracket <<ArrayNum = _STOU32(AN6->getText());>>}
+      | SI:"EFI_STRING_ID" {OpenBracket AN6:Number CloseBracket <<ArrayNum = _STOU32(AN6->getText(), AN6->getLine());>>}
                                                       << TypeName = SI->getText(); LineNum = SI->getLine(); >>
-      | D:"EFI_HII_DATE" {OpenBracket AN7:Number CloseBracket <<ArrayNum = _STOU32(AN7->getText());>>}
+      | D:"EFI_HII_DATE" {OpenBracket AN7:Number CloseBracket <<ArrayNum = _STOU32(AN7->getText(), AN7->getLine());>>}
                                                       << TypeName = D->getText(); LineNum = D->getLine(); IsStruct = TRUE;>>
-      | T:"EFI_HII_TIME" {OpenBracket AN8:Number CloseBracket <<ArrayNum = _STOU32(AN8->getText());>>}
+      | T:"EFI_HII_TIME" {OpenBracket AN8:Number CloseBracket <<ArrayNum = _STOU32(AN8->getText(), AN8->getLine());>>}
                                                       << TypeName = T->getText(); LineNum = T->getLine(); IsStruct = TRUE;>>
-      | R:"EFI_HII_REF" {OpenBracket AN9:Number CloseBracket <<ArrayNum = _STOU32(AN9->getText());>>}
+      | R:"EFI_HII_REF" {OpenBracket AN9:Number CloseBracket <<ArrayNum = _STOU32(AN9->getText(), AN9->getLine());>>}
                                                       << TypeName = R->getText(); LineNum = R->getLine(); IsStruct = TRUE;>>                                                
-      | TN:StringIdentifier {OpenBracket AN10:Number CloseBracket <<ArrayNum = _STOU32(AN10->getText());>>}
+      | TN:StringIdentifier {OpenBracket AN10:Number CloseBracket <<ArrayNum = _STOU32(AN10->getText(), AN10->getLine());>>}
                                                       << TypeName = TN->getText(); LineNum = TN->getLine(); IsStruct = TRUE;>>
     )
                                                       <<
@@ -738,7 +736,7 @@ vfrExtensionData[UINT8 *DataBuff, UINT32 Size, CHAR8 *TypeName, UINT32 TypeSize,
           <<
             ArrayIdx = 0;
             if (IsArray == TRUE) {
-              ArrayIdx = _STOU8(IDX1->getText());
+              ArrayIdx = _STOU8(IDX1->getText(), IDX1->getLine());
               if (ArrayIdx >= ArrayNum) return;
               IsArray = FALSE;
             }
@@ -769,49 +767,49 @@ vfrExtensionData[UINT8 *DataBuff, UINT32 Size, CHAR8 *TypeName, UINT32 TypeSize,
           <<
             if (IsStruct == FALSE) {
               if (strcmp ("UINT64", TypeName) == 0) {
-                Data_U64 = _STOU64(RD->getText());
+                Data_U64 = _STOU64(RD->getText(), RD->getLine());
                 memcpy (ByteOffset, &Data_U64, TypeSize);
               }else if (strcmp ("UINT32", TypeName) == 0) {
-                Data_U32 = _STOU32(RD->getText());
+                Data_U32 = _STOU32(RD->getText(), RD->getLine());
                 memcpy (ByteOffset, &Data_U32, TypeSize);                                                    
               }else if (strcmp ("UINT16", TypeName) == 0) {
-                Data_U16 = _STOU16(RD->getText());
+                Data_U16 = _STOU16(RD->getText(), RD->getLine());
                 memcpy (ByteOffset, &Data_U16, TypeSize);                                                    
               }else if (strcmp ("UINT8", TypeName) == 0) {
-                Data_U8 = _STOU8(RD->getText());
+                Data_U8 = _STOU8(RD->getText(), RD->getLine());
                 memcpy (ByteOffset, &Data_U8, TypeSize);                                                    
               }else if (strcmp ("BOOLEAN", TypeName)== 0) {
-                Data_BL = _STOU8(RD->getText());
+                Data_BL = _STOU8(RD->getText(), RD->getLine());
                 memcpy (ByteOffset, &Data_BL, TypeSize);                                                    
               }else if (strcmp ("EFI_STRING_ID", TypeName) == 0) {
-                Data_SID = _STOSID(RD->getText());
+                Data_SID = _STOSID(RD->getText(), RD->getLine());
                 memcpy (ByteOffset, &Data_SID, TypeSize);                                                    
               }
             } else {
               gCVfrVarDataTypeDB.GetDataFieldInfo(TFName, FieldOffset, FieldType, FieldSize);
               switch (FieldType) {
               case EFI_IFR_TYPE_NUM_SIZE_8:
-                 Data_U8 = _STOU8(RD->getText());
+                 Data_U8 = _STOU8(RD->getText(), RD->getLine());
                  memcpy (ByteOffset + FieldOffset, &Data_U8, FieldSize);
                  break;
               case EFI_IFR_TYPE_NUM_SIZE_16:
-                 Data_U16 = _STOU16(RD->getText());
+                 Data_U16 = _STOU16(RD->getText(), RD->getLine());
                  memcpy (ByteOffset + FieldOffset, &Data_U16, FieldSize);
                  break;
               case EFI_IFR_TYPE_NUM_SIZE_32:
-                 Data_U32 = _STOU32(RD->getText());
+                 Data_U32 = _STOU32(RD->getText(), RD->getLine());
                  memcpy (ByteOffset + FieldOffset, &Data_U32, FieldSize);
                  break;
               case EFI_IFR_TYPE_NUM_SIZE_64:
-                 Data_U64 = _STOU64(RD->getText());
+                 Data_U64 = _STOU64(RD->getText(), RD->getLine());
                  memcpy (ByteOffset + FieldOffset, &Data_U64, FieldSize);
                  break;
               case EFI_IFR_TYPE_BOOLEAN:
-                 Data_BL = _STOU8(RD->getText());
+                 Data_BL = _STOU8(RD->getText(), RD->getLine());
                  memcpy (ByteOffset + FieldOffset, &Data_BL, FieldSize);
                  break;
               case EFI_IFR_TYPE_STRING:
-                 Data_SID = _STOSID(RD->getText());
+                 Data_SID = _STOSID(RD->getText(), RD->getLine());
                  memcpy (ByteOffset + FieldOffset, &Data_SID, FieldSize);
                  break;
               default:
@@ -830,17 +828,17 @@ vfrStatementDefaultStore :
   D:DefaultStore N:StringIdentifier ","
   Prompt "=" "STRING_TOKEN" "\(" S:Number "\)"
   {
-    "," Attribute "=" A:Number                      << DefaultId = _STOU16(A->getText()); >>
+    "," Attribute "=" A:Number                      << DefaultId = _STOU16(A->getText(), A->getLine()); >>
   }
                                                     <<
                                                        if (mCVfrDefaultStore.DefaultIdRegistered (DefaultId) == FALSE) {
                                                          CIfrDefaultStore DSObj;
-                                                         _PCATCH(mCVfrDefaultStore.RegisterDefaultStore (DSObj.GetObjBinAddr(), N->getText(), _STOSID(S->getText()), DefaultId)), D->getLine();
+                                                         _PCATCH(mCVfrDefaultStore.RegisterDefaultStore (DSObj.GetObjBinAddr(), N->getText(), _STOSID(S->getText(), S->getLine()), DefaultId)), D->getLine();
                                                          DSObj.SetLineNo(D->getLine());
-                                                         DSObj.SetDefaultName (_STOSID(S->getText()));
+                                                         DSObj.SetDefaultName (_STOSID(S->getText(), S->getLine()));
                                                          DSObj.SetDefaultId (DefaultId);
                                                        } else {
-                                                         _PCATCH(mCVfrDefaultStore.ReRegisterDefaultStoreById (DefaultId, N->getText(), _STOSID(S->getText()))), D->getLine();
+                                                         _PCATCH(mCVfrDefaultStore.ReRegisterDefaultStoreById (DefaultId, N->getText(), _STOSID(S->getText(), S->getLine()))), D->getLine();
                                                        }
                                                     >>
   ";"
@@ -870,14 +868,14 @@ vfrStatementVarStoreLinear :
   )
   { Key "=" FID:Number ","                          << // Key is used to assign Varid in Framework VFR but no use in UEFI2.1 VFR
                                                        if (mCompatibleMode) {
-                                                         VarStoreId = _STOU16(FID->getText());
+                                                         VarStoreId = _STOU16(FID->getText(), FID->getLine());
                                                        }
                                                     >>
   }
   {
     VarId "=" ID:Number ","                         <<
                                                        _PCATCH(
-                                                         (INTN)(VarStoreId = _STOU16(ID->getText())) != 0,
+                                                         (INTN)(VarStoreId = _STOU16(ID->getText(), ID->getLine())) != 0,
                                                          (INTN)TRUE,
                                                          ID,
                                                          "varid 0 is not allowed."
@@ -920,10 +918,11 @@ vfrStatementVarStoreEfi :
      CHAR8           *TypeName;
      UINT32          LineNum;
      CHAR8           *StoreName = NULL;
+     BOOLEAN         CustomizedName = FALSE;
   >>
   E:Efivarstore                                     << VSEObj.SetLineNo(E->getLine()); >>
   (
-      TN:StringIdentifier ","                       << TypeName = TN->getText(); LineNum = TN->getLine(); >>
+      TN:StringIdentifier ","                       << TypeName = TN->getText(); LineNum = TN->getLine(); CustomizedName = TRUE; >>
     | U8:"UINT8" ","                                << TypeName = U8->getText(); LineNum = U8->getLine(); >>
     | U16:"UINT16" ","                              << TypeName = U16->getText(); LineNum = U16->getLine(); >>
     | C16:"CHAR16" ","                              << TypeName = (CHAR8 *) "UINT16"; LineNum = C16->getLine(); >>
@@ -936,7 +935,7 @@ vfrStatementVarStoreEfi :
   {
     VarId "=" ID:Number ","                         <<
                                                        _PCATCH(
-                                                         (INTN)(VarStoreId = _STOU16(ID->getText())) != 0,
+                                                         (INTN)(VarStoreId = _STOU16(ID->getText(), ID->getLine())) != 0,
                                                          (INTN)TRUE,
                                                          ID,
                                                          "varid 0 is not allowed."
@@ -952,11 +951,15 @@ vfrStatementVarStoreEfi :
     Name    "=" "STRING_TOKEN" "\(" VN:Number "\)" ","  
     VarSize "=" N:Number ","                        << 
                                                        IsUEFI23EfiVarstore = FALSE;
-                                                       StoreName = gCVfrStringDB.GetVarStoreNameFormStringId(_STOSID(VN->getText()));
+                                                       StoreName = gCVfrStringDB.GetVarStoreNameFormStringId(_STOSID(VN->getText(), VN->getLine()));
                                                        if (StoreName == NULL) {
                                                          _PCATCH (VFR_RETURN_UNSUPPORTED, VN->getLine(), "Can't get varstore name for this StringId!");
                                                        }
-                                                       Size = _STOU32(N->getText());
+                                                       if (!CustomizedName) {
+                                                         _PCATCH (VFR_RETURN_UNSUPPORTED, E->getLine(), "Old style efivarstore must have String Identifier!");
+                                                         return;
+                                                       }
+                                                       Size = _STOU32(N->getText(), N->getLine());
                                                        switch (Size) {
                                                        case 1:
                                                         TypeName = (CHAR8 *) "UINT8";
@@ -1012,7 +1015,7 @@ vfrStatementVarStoreEfi :
   ;
 
 vfrVarStoreEfiAttr [UINT32 & Attr] :
-  N:Number                                          << $Attr |= _STOU32(N->getText()); >>
+  N:Number                                          << $Attr |= _STOU32(N->getText(), N->getLine()); >>
   ;
 
 vfrStatementVarStoreNameValue :
@@ -1027,7 +1030,7 @@ vfrStatementVarStoreNameValue :
   {
     VarId "=" ID:Number ","                         <<
                                                        _PCATCH(
-                                                         (INTN)(VarStoreId = _STOU16(ID->getText())) != 0,
+                                                         (INTN)(VarStoreId = _STOU16(ID->getText(), ID->getLine())) != 0,
                                                          (INTN)TRUE,
                                                          ID,
                                                          "varid 0 is not allowed."
@@ -1040,7 +1043,7 @@ vfrStatementVarStoreNameValue :
                                                          _PCATCH(mCVfrDataStorage.DeclareNameVarStoreBegin (SN->getText(), VarStoreId), SN);
                                                          Created = TRUE;
                                                        }
-                                                       _PCATCH(mCVfrDataStorage.NameTableAddItem (_STOSID(N->getText())), SN); 
+                                                       _PCATCH(mCVfrDataStorage.NameTableAddItem (_STOSID(N->getText(), N->getLine())), SN); 
                                                     >>
   )+
   Uuid "=" guidDefinition[Guid]                     << _PCATCH(mCVfrDataStorage.DeclareNameVarStoreEnd (&Guid), SN); >>
@@ -1069,7 +1072,7 @@ validClassNames[UINT16 & Class] :
   | ClassInputDevice                                << $Class |= EFI_INPUT_DEVICE_CLASS; >>
   | ClassOnBoardDevice                              << $Class |= EFI_ON_BOARD_DEVICE_CLASS; >>
   | ClassOtherDevice                                << $Class |= EFI_OTHER_DEVICE_CLASS; >>
-  | N:Number                                        << $Class |= _STOU16(N->getText()); >>
+  | N:Number                                        << $Class |= _STOU16(N->getText(), N->getLine()); >>
   ;
 
 subclassDefinition[UINT16 & SubClass] :
@@ -1078,7 +1081,7 @@ subclassDefinition[UINT16 & SubClass] :
   | SubclassGeneralApplication                      << $SubClass |= EFI_GENERAL_APPLICATION_SUBCLASS; >>
   | SubclassFrontPage                               << $SubClass |= EFI_FRONT_PAGE_SUBCLASS; >>
   | SubclassSingleUse                               << $SubClass |= EFI_SINGLE_USE_SUBCLASS; >>
-  | N:Number                                        << $SubClass |= _STOU16(N->getText()); >>
+  | N:Number                                        << $SubClass |= _STOU16(N->getText(), N->getLine()); >>
   ;
 
 vfrStatementDisableIfFormSet :
@@ -1113,8 +1116,8 @@ vfrStatementSuppressIfFormSet :
 // the syntax of question header and statement header
 //
 vfrStatementHeader[CIfrStatementHeader *SHObj] :
-  Prompt "=" "STRING_TOKEN" "\(" S1:Number "\)" "," << $SHObj->SetPrompt (_STOSID(S1->getText())); >>
-  Help   "=" "STRING_TOKEN" "\(" S2:Number "\)"     << $SHObj->SetHelp (_STOSID(S2->getText())); >>
+  Prompt "=" "STRING_TOKEN" "\(" S1:Number "\)" "," << $SHObj->SetPrompt (_STOSID(S1->getText(), S1->getLine())); >>
+  Help   "=" "STRING_TOKEN" "\(" S2:Number "\)"     << $SHObj->SetHelp (_STOSID(S2->getText(), S2->getLine())); >>
   ;
 
 vfrQuestionHeader[CIfrQuestionHeader & QHObj, EFI_QUESION_TYPE QType = QUESTION_NORMAL]:
@@ -1138,7 +1141,7 @@ vfrQuestionHeader[CIfrQuestionHeader & QHObj, EFI_QUESION_TYPE QType = QUESTION_
   { V:VarId "=" vfrStorageVarId[Info, VarIdStr] "," }
   {
     QuestionId "=" ID:Number ","                    <<
-                                                       QId = _STOQID(ID->getText());
+                                                       QId = _STOQID(ID->getText(), ID->getLine());
                                                        _PCATCH(mCVfrQuestionDB.FindQuestion (QId), VFR_RETURN_UNDEFINED, ID, "has already been used please assign another number");
                                                     >>
   }
@@ -1184,9 +1187,36 @@ questionheaderFlagsField[UINT8 & Flags] :
     ReadOnlyFlag                                    << $Flags |= 0x01; >>
   | InteractiveFlag                                 << $Flags |= 0x04; >>
   | ResetRequiredFlag                               << $Flags |= 0x10; >>
-  | OptionOnlyFlag                                  << $Flags |= 0x80; >>
-  | NVAccessFlag
-  | LateCheckFlag
+  | ReconnectRequiredFlag                           << $Flags |= 0x40; >>
+  | O:OptionOnlyFlag                                << 
+                                                       if (mCompatibleMode) {
+                                                         $Flags |= 0x80;
+                                                       } else {
+                                                         gCVfrErrorHandle.HandleWarning (
+                                                            VFR_WARNING_OBSOLETED_FRAMEWORK_OPCODE,
+                                                            O->getLine(),
+                                                            O->getText()
+                                                            );
+                                                       }
+                                                    >>
+  | N:NVAccessFlag                                  << 
+                                                       if (!mCompatibleMode) {
+                                                          gCVfrErrorHandle.HandleWarning (
+                                                            VFR_WARNING_OBSOLETED_FRAMEWORK_OPCODE,
+                                                            N->getLine(),
+                                                            N->getText()
+                                                            );
+                                                       }
+                                                    >>
+  | L:LateCheckFlag                                 << 
+                                                       if (!mCompatibleMode) {
+                                                          gCVfrErrorHandle.HandleWarning (
+                                                            VFR_WARNING_OBSOLETED_FRAMEWORK_OPCODE,
+                                                            L->getLine(),
+                                                            L->getText()
+                                                            );
+                                                       }
+                                                    >>
   ;
 
 vfrStorageVarId[EFI_VARSTORE_INFO & Info, CHAR8 *&QuestVarIdStr, BOOLEAN CheckFlag = TRUE] :
@@ -1205,7 +1235,7 @@ vfrStorageVarId[EFI_VARSTORE_INFO & Info, CHAR8 *&QuestVarIdStr, BOOLEAN CheckFl
   (
     SN1:StringIdentifier                            << SName = SN1->getText(); _STRCAT(&VarIdStr, SN1->getText()); >>
     OpenBracket I1:Number CloseBracket              <<
-                                                       Idx = _STOU32(I1->getText());
+                                                       Idx = _STOU32(I1->getText(), I1->getLine());
                                                        _STRCAT(&VarIdStr, "[");
                                                        _STRCAT(&VarIdStr, I1->getText());
                                                        _STRCAT(&VarIdStr, "]");
@@ -1267,7 +1297,7 @@ vfrStorageVarId[EFI_VARSTORE_INFO & Info, CHAR8 *&QuestVarIdStr, BOOLEAN CheckFl
       SF:StringIdentifier                           << _STRCAT(&VarIdStr, SF->getText()); _STRCAT(&VarStr, SF->getText()); >>
       {
         OpenBracket I2:Number CloseBracket          <<
-                                                       Idx = _STOU32(I2->getText());
+                                                       Idx = _STOU32(I2->getText(), I2->getLine());
                                                        if (mCompatibleMode) Idx --;
                                                        if (Idx > 0) {
                                                          //
@@ -1347,7 +1377,7 @@ vfrQuestionDataFieldName [EFI_QUESTION_ID &QId, UINT32 &Mask, CHAR8 *&VarIdStr, 
       SF:StringIdentifier                           << _STRCAT (&VarIdStr, SF->getText()); >>
       {
         OpenBracket I2:Number CloseBracket          <<
-                                                       Idx = _STOU32(I2->getText());
+                                                       Idx = _STOU32(I2->getText(), I2->getLine());
                                                        if (mCompatibleMode) Idx --;
                                                        if (Idx > 0) {
                                                          //
@@ -1365,29 +1395,101 @@ vfrQuestionDataFieldName [EFI_QUESTION_ID &QId, UINT32 &Mask, CHAR8 *&VarIdStr, 
   )
   ;
 
-vfrConstantValueField[UINT8 Type] > [EFI_IFR_TYPE_VALUE Value] :
-  <<
-    EFI_GUID Guid;
+vfrConstantValueField[UINT8 Type, EFI_IFR_TYPE_VALUE &Value, BOOLEAN &ListType] :
+  <<  
+    EFI_GUID    Guid;
+    BOOLEAN     Negative = FALSE;
+    BOOLEAN     IntDecStyle = FALSE;
+    CIfrNumeric *NumericQst = NULL;
+    if (gCurrentMinMaxData != NULL && gCurrentMinMaxData->IsNumericOpcode()) {
+      NumericQst = (CIfrNumeric *) gCurrentQuestion;
+      IntDecStyle = (NumericQst->GetNumericFlags() & EFI_IFR_DISPLAY) == 0 ? TRUE : FALSE;
+    }
+    UINT8    *Type8  = (UINT8  *) &Value;
+    UINT16   *Type16 = (UINT16 *) &Value;
+    UINT32   *Type32 = (UINT32 *) &Value;
+    UINT64   *Type64 = (UINT64 *) &Value;
+    UINT16   Index = 0;
+    ListType = FALSE;
   >>
+    {
+      "\-"                                          << Negative = TRUE;  >>
+    }
     N1:Number                                       <<
                                                        switch ($Type) {
                                                        case EFI_IFR_TYPE_NUM_SIZE_8 :
-                                                         $Value.u8     = _STOU8(N1->getText());
+                                                         $Value.u8 = _STOU8(N1->getText(), N1->getLine());
+                                                         if (IntDecStyle) {
+                                                           if (Negative) {
+                                                             if ($Value.u8 > 0x80) {
+                                                               _PCATCH (VFR_RETURN_INVALID_PARAMETER, N1->getLine(), "INT8 type can't big than 0x7F, small than -0x80");
+                                                             }
+                                                           } else {
+                                                             if ($Value.u8 > 0x7F) {
+                                                               _PCATCH (VFR_RETURN_INVALID_PARAMETER, N1->getLine(), "INT8 type can't big than 0x7F, small than -0x80");
+                                                             }
+                                                           }
+                                                         }
+                                                         if (Negative) {
+                                                           $Value.u8 = ~$Value.u8 + 1;
+                                                         }
                                                        break;
                                                        case EFI_IFR_TYPE_NUM_SIZE_16 :
-                                                         $Value.u16    = _STOU16(N1->getText());
+                                                         $Value.u16 = _STOU16(N1->getText(), N1->getLine());
+                                                         if (IntDecStyle) {
+                                                           if (Negative) {
+                                                             if ($Value.u16 > 0x8000) {
+                                                               _PCATCH (VFR_RETURN_INVALID_PARAMETER, N1->getLine(), "INT16 type can't big than 0x7FFF, small than -0x8000");
+                                                             }
+                                                           } else {
+                                                             if ($Value.u16 > 0x7FFF) {
+                                                               _PCATCH (VFR_RETURN_INVALID_PARAMETER, N1->getLine(), "INT16 type can't big than 0x7FFF, small than -0x8000");
+                                                             }
+                                                           }
+                                                         }
+                                                         if (Negative) {
+                                                           $Value.u16 = ~$Value.u16 + 1;
+                                                         }
                                                        break;
                                                        case EFI_IFR_TYPE_NUM_SIZE_32 :
-                                                         $Value.u32    = _STOU32(N1->getText());
+                                                         $Value.u32    = _STOU32(N1->getText(), N1->getLine());
+                                                         if (IntDecStyle) {
+                                                           if (Negative) {
+                                                             if ($Value.u32 > 0x80000000) {
+                                                               _PCATCH (VFR_RETURN_INVALID_PARAMETER, N1->getLine(), "INT32 type can't big than 0x7FFFFFFF, small than -0x80000000");
+                                                             }
+                                                           } else {
+                                                             if ($Value.u32 > 0X7FFFFFFF) {
+                                                               _PCATCH (VFR_RETURN_INVALID_PARAMETER, N1->getLine(), "INT32 type can't big than 0x7FFFFFFF, small than -0x80000000");
+                                                             }
+                                                           }
+                                                         }
+                                                         if (Negative) {
+                                                           $Value.u32 = ~$Value.u32 + 1;
+                                                         }
                                                        break;
                                                        case EFI_IFR_TYPE_NUM_SIZE_64 :
-                                                         $Value.u64    = _STOU64(N1->getText());
+                                                         $Value.u64    = _STOU64(N1->getText(), N1->getLine());
+                                                         if (IntDecStyle) {
+                                                           if (Negative) {
+                                                             if ($Value.u64 > 0x8000000000000000) {
+                                                               _PCATCH (VFR_RETURN_INVALID_PARAMETER, N1->getLine(), "INT64 type can't big than 0x7FFFFFFFFFFFFFFF, small than -0x8000000000000000");
+                                                             }
+                                                           } else {
+                                                             if ($Value.u64 > 0x7FFFFFFFFFFFFFFF) {
+                                                               _PCATCH (VFR_RETURN_INVALID_PARAMETER, N1->getLine(), "INT64 type can't big than 0x7FFFFFFFFFFFFFFF, small than -0x8000000000000000");
+                                                             }
+                                                           }
+                                                         }
+                                                         if (Negative) {
+                                                           $Value.u64 = ~$Value.u64 + 1;
+                                                         }
                                                        break;
                                                        case EFI_IFR_TYPE_BOOLEAN :
-                                                         $Value.b      = _STOU8(N1->getText());
+                                                         $Value.b      = _STOU8(N1->getText(), N1->getLine());
                                                        break;
                                                        case EFI_IFR_TYPE_STRING :
-                                                         $Value.string = _STOU16(N1->getText());
+                                                         $Value.string = _STOU16(N1->getText(), N1->getLine());
                                                        break;
                                                        case EFI_IFR_TYPE_TIME :
                                                        case EFI_IFR_TYPE_DATE :
@@ -1398,14 +1500,57 @@ vfrConstantValueField[UINT8 Type] > [EFI_IFR_TYPE_VALUE Value] :
                                                     >>
   | B1:True                                         << $Value.b      = TRUE; >>
   | B2:False                                        << $Value.b      = FALSE; >>
-  | O1:One                                          << $Value.u8     = _STOU8(O1->getText()); >>
-  | O2:Ones                                         << $Value.u64    = _STOU64(O2->getText()); >>
-  | Z:Zero                                          << $Value.u8     = _STOU8(Z->getText()); >>
-  | HOUR:Number ":" MINUTE:Number ":" SECOND:Number << $Value.time   = _STOT(HOUR->getText(), MINUTE->getText(), SECOND->getText()); >>
-  | YEAR:Number "/" MONTH:Number "/" DAY:Number     << $Value.date   = _STOD(YEAR->getText(), MONTH->getText(), DAY->getText()); >>
+  | O1:One                                          << $Value.u8     = _STOU8(O1->getText(), O1->getLine()); >>
+  | O2:Ones                                         << $Value.u64    = _STOU64(O2->getText(), O2->getLine()); >>
+  | Z:Zero                                          << $Value.u8     = _STOU8(Z->getText(), Z->getLine()); >>
+  | HOUR:Number ":" MINUTE:Number ":" SECOND:Number << $Value.time   = _STOT(HOUR->getText(), MINUTE->getText(),SECOND->getText(), HOUR->getLine()); >>
+  | YEAR:Number "/" MONTH:Number "/" DAY:Number     << $Value.date   = _STOD(YEAR->getText(), MONTH->getText(), DAY->getText(), YEAR->getLine()); >>
   | QI:Number";" FI:Number";" guidDefinition[Guid] ";" "STRING_TOKEN" "\(" DP:Number "\)" 
-                                                    << $Value.ref    = _STOR(QI->getText(), FI->getText(), &Guid, DP->getText()); >>
-  | "STRING_TOKEN" "\(" S1:Number "\)"              << $Value.string = _STOSID(S1->getText()); >>
+                                                    << $Value.ref    = _STOR(QI->getText(), FI->getText(), &Guid, DP->getText(), QI->getLine()); >>
+  | "STRING_TOKEN" "\(" S1:Number "\)"              << $Value.string = _STOSID(S1->getText(), S1->getLine()); >>
+  | "\{"                                            << ListType = TRUE; >>
+      L1:Number                                     << 
+                                                       switch (Type) {
+                                                         case EFI_IFR_TYPE_NUM_SIZE_8 :
+                                                           Type8[Index]  = _STOU8(L1->getText(), L1->getLine());
+                                                         break;
+                                                         case EFI_IFR_TYPE_NUM_SIZE_16 :
+                                                           Type16[Index] = _STOU16(L1->getText(), L1->getLine());
+                                                         break;
+                                                         case EFI_IFR_TYPE_NUM_SIZE_32 :
+                                                           Type32[Index] = _STOU32(L1->getText(), L1->getLine());
+                                                         break;
+                                                         case EFI_IFR_TYPE_NUM_SIZE_64 :
+                                                           Type64[Index] = _STOU64(L1->getText(), L1->getLine());
+                                                         break;
+                                                         default:
+                                                         break;
+                                                       }
+                                                       Index++;
+                                                    >>
+      (
+        "," 
+        L2:Number                                   << 
+                                                       switch (Type) {
+                                                         case EFI_IFR_TYPE_NUM_SIZE_8 :
+                                                           Type8[Index]  = _STOU8(L2->getText(), L2->getLine());
+                                                         break;
+                                                         case EFI_IFR_TYPE_NUM_SIZE_16 :
+                                                           Type16[Index] = _STOU16(L2->getText(), L2->getLine());
+                                                         break;
+                                                         case EFI_IFR_TYPE_NUM_SIZE_32 :
+                                                           Type32[Index] = _STOU32(L2->getText(), L2->getLine());
+                                                         break;
+                                                         case EFI_IFR_TYPE_NUM_SIZE_64 :
+                                                           Type64[Index] = _STOU64(L2->getText(), L2->getLine());
+                                                         break;
+                                                         default:
+                                                         break;
+                                                       }
+                                                       Index++;
+                                                    >>
+      )*
+    "\}"                                           
   ;
 
 //*****************************************************************************
@@ -1415,8 +1560,8 @@ vfrConstantValueField[UINT8 Type] > [EFI_IFR_TYPE_VALUE Value] :
 vfrFormDefinition :
   << CIfrForm FObj; >>
   F:Form                                            << FObj.SetLineNo(F->getLine()); >>
-  FormId "=" S1:Number ","                          << _PCATCH(FObj.SetFormId (_STOFID(S1->getText())), S1); >>
-  Title "=" "STRING_TOKEN" "\(" S2:Number "\)" ";"  << FObj.SetFormTitle (_STOSID(S2->getText())); >>
+  FormId "=" S1:Number ","                          << _PCATCH(FObj.SetFormId (_STOFID(S1->getText(), S1->getLine())), S1); >>
+  Title "=" "STRING_TOKEN" "\(" S2:Number "\)" ";"  << FObj.SetFormTitle (_STOSID(S2->getText(), S2->getLine())); >>
   (
     vfrStatementImage                        |
     vfrStatementLocked                       |
@@ -1430,7 +1575,8 @@ vfrFormDefinition :
     // Just for framework vfr compatibility
     vfrStatementInvalid                      |
     vfrStatementExtension                    |
-    vfrStatementModal
+    vfrStatementModal                        |
+    vfrStatementRefreshEvent ";"
   )*
   E:EndForm                                         <<
                                                       if (mCompatibleMode) {
@@ -1460,10 +1606,10 @@ vfrFormMapDefinition :
     EFI_GUID    Guid;
   >>
   F:FormMap                                         << FMapObj = new CIfrFormMap(); FMapObj->SetLineNo(F->getLine()); >>
-  FormId "=" S1:Number ","                          << _PCATCH(FMapObj->SetFormId (_STOFID(S1->getText())), S1); >>
+  FormId "=" S1:Number ","                          << _PCATCH(FMapObj->SetFormId (_STOFID(S1->getText(), S1->getLine())), S1); >>
   (
     MapTitle "=" "STRING_TOKEN" "\(" S2:Number "\)" ";"
-    MapGuid  "=" guidDefinition[Guid] ";"           << FMapObj->SetFormMapMethod (_STOFID(S2->getText()), &Guid); FormMapMethodNumber ++; >>
+    MapGuid  "=" guidDefinition[Guid] ";"           << FMapObj->SetFormMapMethod (_STOFID(S2->getText(), S2->getLine()), &Guid); FormMapMethodNumber ++; >>
   )*                                                << if (FormMapMethodNumber == 0) {_PCATCH (VFR_RETURN_INVALID_PARAMETER, F->getLine(), "No MapMethod is set for FormMap!");} delete FMapObj;>>
   (
     vfrStatementImage                        |
@@ -1476,7 +1622,8 @@ vfrFormMapDefinition :
     vfrStatementLabel                        |
     vfrStatementBanner                       |
     vfrStatementExtension                    |
-    vfrStatementModal
+    vfrStatementModal                        |
+    vfrStatementRefreshEvent ";"
   )*
   E:EndForm                                         << CRT_END_OP (E); >>
   ";"
@@ -1497,7 +1644,8 @@ vfrStatementRules :
 vfrStatementDefault :
   <<
      BOOLEAN               IsExp         = FALSE;
-     EFI_IFR_TYPE_VALUE    Val           = gZeroEfiIfrTypeValue;
+     UINT64                ValueList[EFI_IFR_MAX_LENGTH] = {0,};
+     EFI_IFR_TYPE_VALUE    *Val           = (EFI_IFR_TYPE_VALUE *) ValueList;
      CIfrDefault           *DObj         = NULL;
      CIfrDefault2          *DObj2        = NULL;
      EFI_DEFAULT_ID        DefaultId     = EFI_HII_DEFAULT_CLASS_STANDARD;
@@ -1505,29 +1653,105 @@ vfrStatementDefault :
      EFI_VFR_VARSTORE_TYPE VarStoreType  = EFI_VFR_VARSTORE_INVALID;
      UINT32                Size          = 0;
      EFI_GUID              *VarGuid      = NULL;
+     BOOLEAN               ArrayType     = FALSE;
+     UINT8                 *Type8        = (UINT8  *) ValueList;
+     UINT16                *Type16       = (UINT16 *) ValueList;
+     UINT32                *Type32       = (UINT32 *) ValueList;
+     UINT64                *Type64       = (UINT64 *) ValueList;
+     CIfrNumeric           *NumericQst   = NULL;
+
   >>
   D:Default                                         
   (
     (
-      "=" vfrConstantValueField[_GET_CURRQEST_DATATYPE()] > [Val] ","  
+      "=" vfrConstantValueField[_GET_CURRQEST_DATATYPE(), *Val, ArrayType] ","  
                                                     << 
                                                         if (gCurrentMinMaxData != NULL && gCurrentMinMaxData->IsNumericOpcode()) {
                                                           //check default value is valid for Numeric Opcode
-                                                          if (Val.u64 < gCurrentMinMaxData->GetMinData(_GET_CURRQEST_DATATYPE()) || Val.u64 > gCurrentMinMaxData->GetMaxData(_GET_CURRQEST_DATATYPE())) {
-                                                            _PCATCH (VFR_RETURN_INVALID_PARAMETER, D->getLine(), "Numeric default value must be between MinValue and MaxValue.");
+                                                          NumericQst = (CIfrNumeric *) gCurrentQuestion;
+                                                          if ((NumericQst->GetNumericFlags() & EFI_IFR_DISPLAY) == 0) {
+                                                            switch (_GET_CURRQEST_DATATYPE()) {
+                                                            case EFI_IFR_TYPE_NUM_SIZE_8:
+                                                              if (((INT8) Val->u8 < (INT8) gCurrentMinMaxData->GetMinData(_GET_CURRQEST_DATATYPE())) || 
+                                                                  ((INT8) Val->u8 > (INT8) gCurrentMinMaxData->GetMaxData(_GET_CURRQEST_DATATYPE()))) {
+                                                                _PCATCH (VFR_RETURN_INVALID_PARAMETER, D->getLine(), "Numeric default value must be between MinValue and MaxValue.");
+                                                              }
+                                                              break;
+                                                            case EFI_IFR_TYPE_NUM_SIZE_16:
+                                                              if (((INT16) Val->u16 < (INT16) gCurrentMinMaxData->GetMinData(_GET_CURRQEST_DATATYPE())) || 
+                                                                  ((INT16) Val->u16 > (INT16) gCurrentMinMaxData->GetMaxData(_GET_CURRQEST_DATATYPE()))) {
+                                                                _PCATCH (VFR_RETURN_INVALID_PARAMETER, D->getLine(), "Numeric default value must be between MinValue and MaxValue.");
+                                                              }
+                                                              break;
+                                                            case EFI_IFR_TYPE_NUM_SIZE_32:
+                                                              if (((INT32) Val->u32 < (INT32) gCurrentMinMaxData->GetMinData(_GET_CURRQEST_DATATYPE())) || 
+                                                                  ((INT32) Val->u32 > (INT32) gCurrentMinMaxData->GetMaxData(_GET_CURRQEST_DATATYPE()))) {
+                                                                _PCATCH (VFR_RETURN_INVALID_PARAMETER, D->getLine(), "Numeric default value must be between MinValue and MaxValue.");
+                                                              }
+                                                              break;
+                                                            case EFI_IFR_TYPE_NUM_SIZE_64:
+                                                              if (((INT64) Val->u64 < (INT64) gCurrentMinMaxData->GetMinData(_GET_CURRQEST_DATATYPE())) || 
+                                                                  ((INT64) Val->u64 > (INT64) gCurrentMinMaxData->GetMaxData(_GET_CURRQEST_DATATYPE()))) {
+                                                                _PCATCH (VFR_RETURN_INVALID_PARAMETER, D->getLine(), "Numeric default value must be between MinValue and MaxValue.");
+                                                              }
+                                                              break;
+                                                            default:
+                                                              break;
+                                                            }
+                                                          } else {
+                                                            if (Val->u64 < gCurrentMinMaxData->GetMinData(_GET_CURRQEST_DATATYPE()) || Val->u64 > gCurrentMinMaxData->GetMaxData(_GET_CURRQEST_DATATYPE())) {
+                                                              _PCATCH (VFR_RETURN_INVALID_PARAMETER, D->getLine(), "Numeric default value must be between MinValue and MaxValue.");
+                                                            }
                                                           }
                                                         }
                                                         if (_GET_CURRQEST_DATATYPE() == EFI_IFR_TYPE_OTHER) {
                                                           _PCATCH (VFR_RETURN_FATAL_ERROR, D->getLine(), "Default data type error.");
                                                           Size = sizeof (EFI_IFR_TYPE_VALUE);
+                                                        } else if (ArrayType) {
+                                                          switch (_GET_CURRQEST_DATATYPE()) {
+                                                            case EFI_IFR_TYPE_NUM_SIZE_8 :
+                                                              while (Type8[Size] != 0) {
+                                                                Size++;
+                                                              }
+                                                              break;
+                                                            case EFI_IFR_TYPE_NUM_SIZE_16 :
+                                                              while (Type16[Size] != 0) {
+                                                                Size++;
+                                                              }
+                                                              Size *= sizeof (UINT16);
+                                                              break;
+
+                                                            case EFI_IFR_TYPE_NUM_SIZE_32 :
+                                                              while (Type32[Size] != 0) {
+                                                                Size++;
+                                                              }
+                                                              Size *= sizeof (UINT32);
+                                                              break;
+
+                                                            case EFI_IFR_TYPE_NUM_SIZE_64 :
+                                                              while (Type64[Size] != 0) {
+                                                                Size++;
+                                                              }
+                                                              Size *= sizeof (UINT64);
+                                                              break;
+
+                                                            default:
+                                                              break;
+                                                          }
                                                         } else {
                                                           _PCATCH (gCVfrVarDataTypeDB.GetDataTypeSize (_GET_CURRQEST_DATATYPE(), &Size), D->getLine());
                                                         }
                                                         Size += OFFSET_OF (EFI_IFR_DEFAULT, Value);
                                                         DObj = new CIfrDefault ((UINT8)Size);
                                                         DObj->SetLineNo(D->getLine());
-                                                        DObj->SetType (_GET_CURRQEST_DATATYPE()); 
-                                                        DObj->SetValue(Val);
+                                                        if (ArrayType) {
+                                                          DObj->SetType (EFI_IFR_TYPE_BUFFER);
+                                                        } else if (gIsStringOp) {
+                                                          DObj->SetType (EFI_IFR_TYPE_STRING);
+                                                        } else {
+                                                          DObj->SetType (_GET_CURRQEST_DATATYPE());
+                                                        }
+                                                        DObj->SetValue(*Val);
                                                     >>
       |                                             << IsExp = TRUE; DObj2 = new CIfrDefault2; DObj2->SetLineNo(D->getLine()); DObj2->SetScope (1); >>
         vfrStatementValue ","                       << CIfrEnd EndObj1; EndObj1.SetLineNo(D->getLine()); >>
@@ -1557,9 +1781,9 @@ vfrStatementDefault :
                                                                    VarStoreName,
                                                                    VarGuid,
                                                                    _GET_CURRQEST_DATATYPE (),
-                                                                     Val),
-                                                                     D->getLine()
-                                                                     );
+                                                                   *Val),
+                                                                   D->getLine()
+                                                                   );
                                                          }
                                                        }
                                                        if (DObj  != NULL) {delete DObj;} 
@@ -1617,8 +1841,30 @@ vfrStatementInvalid :
   ;
 
 flagsField :
-  Number | InteractiveFlag | ManufacturingFlag | DefaultFlag |
-  NVAccessFlag | ResetRequiredFlag | LateCheckFlag
+  Number 
+  | InteractiveFlag 
+  | ManufacturingFlag 
+  | DefaultFlag 
+  | ResetRequiredFlag 
+  | ReconnectRequiredFlag
+  | N:NVAccessFlag                                     << 
+                                                          if (!mCompatibleMode) {
+                                                            gCVfrErrorHandle.HandleWarning (
+                                                              VFR_WARNING_OBSOLETED_FRAMEWORK_OPCODE,
+                                                              N->getLine(),
+                                                              N->getText()
+                                                              );
+                                                          }
+                                                       >>
+  | L:LateCheckFlag                                    << 
+                                                          if (!mCompatibleMode) {
+                                                            gCVfrErrorHandle.HandleWarning (
+                                                              VFR_WARNING_OBSOLETED_FRAMEWORK_OPCODE,
+                                                              L->getLine(),
+                                                              L->getText()
+                                                              );
+                                                          }
+                                                       >> 
   ;
 
 vfrStatementValue :
@@ -1642,7 +1888,7 @@ vfrStatementWrite :
 vfrStatementSubTitle :
   << CIfrSubtitle SObj; >>
   L:Subtitle                                           << SObj.SetLineNo(L->getLine()); >>
-  Text "=" "STRING_TOKEN" "\(" S:Number "\)"           << SObj.SetPrompt (_STOSID(S->getText())); >>
+  Text "=" "STRING_TOKEN" "\(" S:Number "\)"           << SObj.SetPrompt (_STOSID(S->getText(), S->getLine())); >>
   {
     "," FLAGS "=" vfrSubtitleFlags[SObj]
   }
@@ -1652,7 +1898,7 @@ vfrStatementSubTitle :
   |
     { "," vfrStatementStatTagList}
     { "," (vfrStatementStat | vfrStatementQuestions)*}
-    E: EndSubtitle ";"                                  << CRT_END_OP (E); >>
+    D: EndSubtitle ";"                                  << CRT_END_OP (D); >>
   )
   ;
 
@@ -1663,7 +1909,7 @@ vfrSubtitleFlags [CIfrSubtitle & SObj] :
   ;
 
 subtitleFlagsField [UINT8 & Flags] :
-    N:Number                                           << $Flags |= _STOU8(N->getText()); >>
+    N:Number                                           << $Flags |= _STOU8(N->getText(), N->getLine()); >>
   | "HORIZONTAL"                                       << $Flags |= 0x01; >>
   ;
 
@@ -1677,7 +1923,7 @@ vfrStatementStaticText :
   Help "=" "STRING_TOKEN" "\(" S1:Number "\)" ","
   Text "=" "STRING_TOKEN" "\(" S2:Number "\)"
   {
-    "," Text "=" "STRING_TOKEN" "\(" S3:Number "\)"    << TxtTwo = _STOSID(S3->getText()); >>
+    "," Text "=" "STRING_TOKEN" "\(" S3:Number "\)"    << TxtTwo = _STOSID(S3->getText(), S3->getLine()); >>
   }
   {
     "," F:FLAGS "=" staticTextFlagsField[Flags] ( "\|" staticTextFlagsField[Flags] )*
@@ -1685,20 +1931,27 @@ vfrStatementStaticText :
   }
                                                        <<
                                                           if (Flags & EFI_IFR_FLAG_CALLBACK) {
+                                                            if (TxtTwo != EFI_STRING_ID_INVALID) {
+                                                              gCVfrErrorHandle.HandleWarning (
+                                                                                VFR_WARNING_ACTION_WITH_TEXT_TWO,
+                                                                                S3->getLine(),
+                                                                                S3->getText()
+                                                                                );
+                                                            }
                                                             CIfrAction AObj;
                                                             mCVfrQuestionDB.RegisterQuestion (NULL, NULL, QId);
                                                             AObj.SetLineNo (F->getLine());
                                                             AObj.SetQuestionId (QId);
-                                                            AObj.SetPrompt (_STOSID(S2->getText()));
-                                                            AObj.SetHelp (_STOSID(S1->getText()));
+                                                            AObj.SetPrompt (_STOSID(S2->getText(), S2->getLine()));
+                                                            AObj.SetHelp (_STOSID(S1->getText(), S1->getLine()));
                                                             _PCATCH(AObj.SetFlags (Flags), F->getLine());
                                                             AssignQuestionKey (AObj, KN);
                                                             CRT_END_OP (KN);
                                                           } else {
                                                             CIfrText TObj;
                                                             TObj.SetLineNo (T->getLine());
-                                                            TObj.SetHelp (_STOSID(S1->getText()));
-                                                            TObj.SetPrompt (_STOSID(S2->getText()));
+                                                            TObj.SetHelp (_STOSID(S1->getText(), S1->getLine()));
+                                                            TObj.SetPrompt (_STOSID(S2->getText(), S2->getLine()));
                                                             TObj.SetTextTwo (TxtTwo);
                                                           }
                                                        >>
@@ -1707,7 +1960,7 @@ vfrStatementStaticText :
   ;
 
 staticTextFlagsField[UINT8 & HFlags] :
-    N:Number                                           << _PCATCH(_STOU8(N->getText()) == 0 ? VFR_RETURN_SUCCESS : VFR_RETURN_UNSUPPORTED, N->getLine()); >>
+    N:Number                                           << _PCATCH(_STOU8(N->getText(), N->getLine()) == 0 ? VFR_RETURN_SUCCESS : VFR_RETURN_UNSUPPORTED, N->getLine()); >>
   | questionheaderFlagsField[HFlags]
   ;
 
@@ -1741,9 +1994,9 @@ vfrStatementGoto :
       Question "=" QN1:Number ","
                                                        <<
                                                           RefType = 4;
-                                                          DevPath = _STOSID(P->getText());
-                                                          FId = _STOFID(F1->getText());
-                                                          QId = _STOQID(QN1->getText());
+                                                          DevPath = _STOSID(P->getText(), P->getLine());
+                                                          FId = _STOFID(F1->getText(), F1->getLine());
+                                                          QId = _STOQID(QN1->getText(), QN1->getLine());
                                                        >>
     )
     |
@@ -1753,13 +2006,13 @@ vfrStatementGoto :
       Question "=" QN2:Number ","
                                                        <<
                                                           RefType = 3;
-                                                          FId = _STOFID(F2->getText());
-                                                          QId = _STOQID(QN2->getText());
+                                                          FId = _STOFID(F2->getText(), F2->getLine());
+                                                          QId = _STOQID(QN2->getText(), QN2->getLine());
                                                        >>
     )
     |
     (
-      FormId "=" F3:Number ","                         << RefType = 2; FId = _STOFID(F3->getText()); >>
+      FormId "=" F3:Number ","                         << RefType = 2; FId = _STOFID(F3->getText(), F3->getLine()); >>
       Question "="
       (
           QN3:StringIdentifier ","                     << 
@@ -1768,14 +2021,14 @@ vfrStatementGoto :
                                                             _PCATCH(VFR_RETURN_UNDEFINED, QN3);
                                                           }
                                                        >>
-        | QN4:Number ","                               << QId = _STOQID(QN4->getText()); >>
+        | QN4:Number ","                               << QId = _STOQID(QN4->getText(), QN4->getLine()); >>
       )
     )
     |
     (
       F4:Number ","                                    <<
                                                           RefType = 1;
-                                                          FId = _STOFID(F4->getText());
+                                                          FId = _STOFID(F4->getText(), F4->getLine());
                                                        >>
     )
   }
@@ -1857,7 +2110,7 @@ vfrGotoFlags [CIfrQuestionHeader *QHObj, UINT32 LineNum] :
   ;
 
 gotoFlagsField[UINT8 & HFlags] :
-    N:Number                                           << _PCATCH(_STOU8(N->getText()) == 0 ? VFR_RETURN_SUCCESS : VFR_RETURN_UNSUPPORTED, N->getLine()); >>
+    N:Number                                           << _PCATCH(_STOU8(N->getText(), N->getLine()) == 0 ? VFR_RETURN_SUCCESS : VFR_RETURN_UNSUPPORTED, N->getLine()); >>
   | questionheaderFlagsField[HFlags]
   ;
 
@@ -1989,9 +2242,9 @@ checkboxFlagsField[UINT8 & LFlags, UINT8 & HFlags] :
                                                             //
                                                             // set question flag
                                                             //
-                                                            $LFlags |= _STOU8(N->getText());
+                                                            $LFlags |= _STOU8(N->getText(), N->getLine());
                                                           } else {
-                                                            _PCATCH(_STOU8(N->getText()) == 0 ? VFR_RETURN_SUCCESS : VFR_RETURN_UNSUPPORTED, N->getLine());
+                                                            _PCATCH(_STOU8(N->getText(), N->getLine()) == 0 ? VFR_RETURN_SUCCESS : VFR_RETURN_UNSUPPORTED, N->getLine());
                                                           }
                                                        >>
   | D:"DEFAULT"                                        <<
@@ -2035,7 +2288,7 @@ vfrStatementAction :
   L:Action                                             << AObj.SetLineNo(L->getLine()); >>
   vfrQuestionHeader[AObj] ","
   { F:FLAGS "=" vfrActionFlags[AObj, F->getLine()] "," }
-  Config "=" "STRING_TOKEN" "\(" S:Number "\)" ","     << AObj.SetQuestionConfig (_STOSID(S->getText())); >>
+  Config "=" "STRING_TOKEN" "\(" S:Number "\)" ","     << AObj.SetQuestionConfig (_STOSID(S->getText(), S->getLine())); >>
   vfrStatementQuestionTagList
   E:EndAction                                          << CRT_END_OP (E); >>
   ";"
@@ -2048,7 +2301,7 @@ vfrActionFlags[CIfrAction & AObj, UINT32 LineNum] :
   ;
 
 actionFlagsField[UINT8 & HFlags] :
-    N:Number                                           << _PCATCH(_STOU8(N->getText()) == 0 ? VFR_RETURN_SUCCESS : VFR_RETURN_UNSUPPORTED, N->getLine()); >>
+    N:Number                                           << _PCATCH(_STOU8(N->getText(), N->getLine()) == 0 ? VFR_RETURN_SUCCESS : VFR_RETURN_UNSUPPORTED, N->getLine()); >>
   | questionheaderFlagsField[HFlags]
   ;
 
@@ -2095,8 +2348,8 @@ vfrStatementDate :
                                                           mCVfrQuestionDB.RegisterOldDateQuestion (VarIdStr[0], VarIdStr[1], VarIdStr[2], QId);
                                                           DObj.SetQuestionId (QId);
                                                           DObj.SetFlags (EFI_IFR_QUESTION_FLAG_DEFAULT, QF_DATE_STORAGE_TIME);
-                                                          DObj.SetPrompt (_STOSID(YP->getText()));
-                                                          DObj.SetHelp (_STOSID(YH->getText()));
+                                                          DObj.SetPrompt (_STOSID(YP->getText(), YP->getLine()));
+                                                          DObj.SetHelp (_STOSID(YH->getText(), YH->getLine()));
                                                           if (VarIdStr[0] != NULL) { delete VarIdStr[0]; } if (VarIdStr[1] != NULL) { delete VarIdStr[1]; } if (VarIdStr[2] != NULL) { delete VarIdStr[2]; }
                                                        >>
                                                        << {CIfrDefault DefaultObj(Size, EFI_HII_DEFAULT_CLASS_STANDARD, EFI_IFR_TYPE_DATE, Val); DefaultObj.SetLineNo(L->getLine());} >>
@@ -2115,19 +2368,19 @@ minMaxDateStepDefault[EFI_HII_DATE & D, UINT8 KeyValue] :
     "default" "=" N:Number ","                         <<
                                                           switch (KeyValue) {
                                                           case 0: 
-                                                            D.Year  = _STOU16(N->getText());
-                                                            if (D.Year < _STOU16 (MinN->getText()) || D.Year > _STOU16 (MaxN->getText())) {
+                                                            D.Year  = _STOU16(N->getText(), N->getLine());
+                                                            if (D.Year < _STOU16 (MinN->getText(), MinN->getLine()) || D.Year > _STOU16 (MaxN->getText(), MaxN->getLine())) {
                                                               _PCATCH (VFR_RETURN_INVALID_PARAMETER, N->getLine(), "Year default value must be between Min year and Max year.");
                                                             }
                                                             break;
                                                           case 1: 
-                                                            D.Month = _STOU8(N->getText()); 
+                                                            D.Month = _STOU8(N->getText(), N->getLine()); 
                                                             if (D.Month < 1 || D.Month > 12) {
                                                               _PCATCH (VFR_RETURN_INVALID_PARAMETER, N->getLine(), "Month default value must be between 1 and 12.");
                                                             }
                                                             break;
                                                           case 2: 
-                                                            D.Day = _STOU8(N->getText()); 
+                                                            D.Day = _STOU8(N->getText(), N->getLine()); 
                                                             if (D.Day < 1 || D.Day > 31) {
                                                               _PCATCH (VFR_RETURN_INVALID_PARAMETER, N->getLine(), "Day default value must be between 1 and 31.");
                                                             }
@@ -2144,7 +2397,7 @@ vfrDateFlags [CIfrDate & DObj, UINT32 LineNum] :
   ;
 
 dateFlagsField [UINT8 & Flags] :
-    N:Number                                           << $Flags |= _STOU8(N->getText()); >>
+    N:Number                                           << $Flags |= _STOU8(N->getText(), N->getLine()); >>
   | "YEAR_SUPPRESS"                                    << $Flags |= 0x01; >>
   | "MONTH_SUPPRESS"                                   << $Flags |= 0x02; >>
   | "DAY_SUPPRESS"                                     << $Flags |= 0x04; >>
@@ -2164,41 +2417,205 @@ vfrSetMinMaxStep[CIfrMinMaxStepData & MMSDObj] :
      UINT32 MaxU4 = 0, MinU4 = 0, StepU4 = 0;
      UINT16 MaxU2 = 0, MinU2 = 0, StepU2 = 0;
      UINT8  MaxU1 = 0, MinU1 = 0, StepU1 = 0;
+     BOOLEAN IntDecStyle = FALSE;
+     CIfrNumeric *NObj = (CIfrNumeric *) (&MMSDObj);
+     if ((NObj->GetOpCode() == EFI_IFR_NUMERIC_OP) && ((NObj->GetNumericFlags() & EFI_IFR_DISPLAY) == 0)) {
+       IntDecStyle = TRUE;
+     }
+     BOOLEAN MinNegative = FALSE;
+     BOOLEAN MaxNegative = FALSE;
   >>
-  Minimum   "=" I:Number ","
-                                                       <<
+  Minimum   "=" 
+  {
+    "\-"                                               << MinNegative = TRUE; >>
+  }
+  I:Number ","                                         <<
+                                                          if (!IntDecStyle &&  MinNegative) {
+                                                            _PCATCH (VFR_RETURN_INVALID_PARAMETER, I->getLine(), "\"-\" can't be used when not in int decimal type. ");
+                                                          }
                                                           switch (_GET_CURRQEST_DATATYPE()) {
-                                                          case EFI_IFR_TYPE_NUM_SIZE_64 : MinU8 = _STOU64(I->getText()); break;
-                                                          case EFI_IFR_TYPE_NUM_SIZE_32 : MinU4 = _STOU32(I->getText()); break;
-                                                          case EFI_IFR_TYPE_NUM_SIZE_16 : MinU2 = _STOU16(I->getText()); break;
-                                                          case EFI_IFR_TYPE_NUM_SIZE_8 :  MinU1 = _STOU8(I->getText());  break;
+                                                          case EFI_IFR_TYPE_NUM_SIZE_64 :
+                                                            MinU8 = _STOU64(I->getText(), I->getLine());
+                                                            if (IntDecStyle) {
+                                                              if (MinNegative) { 
+                                                                if (MinU8 > 0x8000000000000000) {
+                                                                  _PCATCH (VFR_RETURN_INVALID_PARAMETER, I->getLine(), "INT64 type minimum can't small than -0x8000000000000000, big than 0x7FFFFFFFFFFFFFFF");
+                                                                }
+                                                              } else {
+                                                                if (MinU8 > 0x7FFFFFFFFFFFFFFF) {
+                                                                  _PCATCH (VFR_RETURN_INVALID_PARAMETER, I->getLine(), "INT64 type minimum can't small than -0x8000000000000000, big than 0x7FFFFFFFFFFFFFFF");
+                                                                }
+                                                              }
+                                                            }
+                                                            if (MinNegative) {
+                                                              MinU8 = ~MinU8 + 1;
+                                                            }
+                                                            break;
+                                                          case EFI_IFR_TYPE_NUM_SIZE_32 :
+                                                            MinU4 = _STOU32(I->getText(), I->getLine());
+                                                            if (IntDecStyle) {
+                                                              if (MinNegative) { 
+                                                                if (MinU4 > 0x80000000) {
+                                                                  _PCATCH (VFR_RETURN_INVALID_PARAMETER, I->getLine(), "INT32 type minimum can't small than -0x80000000, big than 0x7FFFFFFF");
+                                                                }
+                                                              } else {
+                                                                if (MinU4 > 0x7FFFFFFF) {
+                                                                  _PCATCH (VFR_RETURN_INVALID_PARAMETER, I->getLine(), "INT32 type minimum can't small than -0x80000000, big than 0x7FFFFFFF");
+                                                                }
+                                                              }
+                                                            }
+                                                            if (MinNegative) {
+                                                              MinU4 = ~MinU4 + 1;
+                                                            }
+                                                            break;
+                                                          case EFI_IFR_TYPE_NUM_SIZE_16 :
+                                                            MinU2 = _STOU16(I->getText(), I->getLine());
+                                                            if (IntDecStyle) {
+                                                              if (MinNegative) { 
+                                                                if (MinU2 > 0x8000) {
+                                                                  _PCATCH (VFR_RETURN_INVALID_PARAMETER, I->getLine(), "INT16 type minimum can't small than -0x8000, big than 0x7FFF");
+                                                                }
+                                                              } else {
+                                                                if (MinU2 > 0x7FFF) {
+                                                                  _PCATCH (VFR_RETURN_INVALID_PARAMETER, I->getLine(), "INT16 type minimum can't small than -0x8000, big than 0x7FFF");
+                                                                }
+                                                              }
+                                                            }
+                                                            if (MinNegative) {
+                                                              MinU2 = ~MinU2 + 1;
+                                                            }
+                                                            break;
+                                                          case EFI_IFR_TYPE_NUM_SIZE_8 :
+                                                            MinU1 = _STOU8(I->getText(), I->getLine());
+                                                            if (IntDecStyle) {
+                                                              if (MinNegative) { 
+                                                                if (MinU1 > 0x80) {
+                                                                  _PCATCH (VFR_RETURN_INVALID_PARAMETER, I->getLine(), "INT8 type minimum can't small than -0x80, big than 0x7F");
+                                                                }
+                                                              } else {
+                                                                if (MinU1 > 0x7F) {
+                                                                  _PCATCH (VFR_RETURN_INVALID_PARAMETER, I->getLine(), "INT8 type minimum can't small than -0x80, big than 0x7F");
+                                                                }
+                                                              }
+                                                            }
+                                                            if (MinNegative) {
+                                                              MinU1 = ~MinU1 + 1;
+                                                            }
+                                                            break;
                                                           }
                                                        >>
-  Maximum   "=" A:Number ","
-                                                       <<
+  Maximum   "=" 
+  { 
+    "\-"                                               << MaxNegative = TRUE; >>
+  }
+  A:Number ","                                         <<
+                                                          if (!IntDecStyle && MaxNegative) {
+                                                            _PCATCH (VFR_RETURN_INVALID_PARAMETER, A->getLine(), "\"-\" can't be used when not in int decimal type. ");
+                                                          }
+
                                                           switch (_GET_CURRQEST_DATATYPE()) {
                                                           case EFI_IFR_TYPE_NUM_SIZE_64 : 
-                                                            MaxU8 = _STOU64(A->getText()); 
-                                                            if (MaxU8 < MinU8) {
-                                                              _PCATCH (VFR_RETURN_INVALID_PARAMETER, A->getLine(), "Maximum can't be less than Minimum");
+                                                            MaxU8 = _STOU64(A->getText(), A->getLine()); 
+                                                            if (IntDecStyle) {
+                                                              if (MaxNegative) {
+                                                                if (MaxU8 > 0x8000000000000000) {
+                                                                  _PCATCH (VFR_RETURN_INVALID_PARAMETER, A->getLine(), "INT64 type maximum can't small than -0x8000000000000000, big than 0x7FFFFFFFFFFFFFFF");
+                                                                }
+                                                              } else {
+                                                                if (MaxU8 > 0x7FFFFFFFFFFFFFFF) {
+                                                                  _PCATCH (VFR_RETURN_INVALID_PARAMETER, A->getLine(), "INT64 type maximum can't small than -0x8000000000000000, big than 0x7FFFFFFFFFFFFFFF");
+                                                                }
+                                                              }
+                                                            }
+                                                            if (MaxNegative) {
+                                                              MaxU8 = ~MaxU8 + 1;
+                                                            }
+                                                            if (IntDecStyle) {
+                                                              if ((INT64) MaxU8 < (INT64) MinU8) {
+                                                                _PCATCH (VFR_RETURN_INVALID_PARAMETER, A->getLine(), "Maximum can't be less than Minimum");
+                                                              }
+                                                            } else {
+                                                              if (MaxU8 < MinU8) {
+                                                                _PCATCH (VFR_RETURN_INVALID_PARAMETER, A->getLine(), "Maximum can't be less than Minimum");
+                                                              }
                                                             }
                                                             break;
                                                           case EFI_IFR_TYPE_NUM_SIZE_32 : 
-                                                            MaxU4 = _STOU32(A->getText()); 
-                                                            if (MaxU4 < MinU4) {
-                                                              _PCATCH (VFR_RETURN_INVALID_PARAMETER, A->getLine(), "Maximum can't be less than Minimum");
+                                                            MaxU4 = _STOU32(A->getText(), A->getLine());
+                                                            if (IntDecStyle) {
+                                                              if (MaxNegative) {
+                                                                if (MaxU4 > 0x80000000) {
+                                                                  _PCATCH (VFR_RETURN_INVALID_PARAMETER, A->getLine(), "INT32 type maximum can't small than -0x80000000, big than 0x7FFFFFFF");
+                                                                }
+                                                              } else {
+                                                                if (MaxU4 > 0x7FFFFFFF) {
+                                                                  _PCATCH (VFR_RETURN_INVALID_PARAMETER, A->getLine(), "INT32 type maximum can't small than -0x80000000, big than 0x7FFFFFFF");
+                                                                }
+                                                              }
+                                                            }
+                                                            if (MaxNegative) {
+                                                              MaxU4 = ~MaxU4 + 1;
+                                                            }
+                                                            if (IntDecStyle) {
+                                                              if ((INT32) MaxU4 < (INT32) MinU4) {
+                                                                _PCATCH (VFR_RETURN_INVALID_PARAMETER, A->getLine(), "Maximum can't be less than Minimum");
+                                                              }
+                                                            } else {
+                                                              if (MaxU4 < MinU4) {
+                                                                _PCATCH (VFR_RETURN_INVALID_PARAMETER, A->getLine(), "Maximum can't be less than Minimum");
+                                                              }
                                                             }
                                                             break;
                                                           case EFI_IFR_TYPE_NUM_SIZE_16 : 
-                                                            MaxU2 = _STOU16(A->getText()); 
-                                                            if (MaxU2 < MinU2) {
-                                                              _PCATCH (VFR_RETURN_INVALID_PARAMETER, A->getLine(), "Maximum can't be less than Minimum");
+                                                            MaxU2 = _STOU16(A->getText(), A->getLine()); 
+                                                            if (IntDecStyle) {
+                                                              if (MaxNegative) {
+                                                                if (MaxU2 > 0x8000) {
+                                                                  _PCATCH (VFR_RETURN_INVALID_PARAMETER, A->getLine(), "INT16 type maximum can't small than -0x8000, big than 0x7FFF");
+                                                                }
+                                                              } else {
+                                                                if (MaxU2 > 0x7FFF) {
+                                                                  _PCATCH (VFR_RETURN_INVALID_PARAMETER, A->getLine(), "INT16 type maximum can't small than -0x8000, big than 0x7FFF");
+                                                                }
+                                                              }
+                                                            }
+                                                            if (MaxNegative) {
+                                                              MaxU2 = ~MaxU2 + 1;
+                                                            }
+                                                            if (IntDecStyle) {
+                                                              if ((INT16) MaxU2 < (INT16) MinU2) {
+                                                                _PCATCH (VFR_RETURN_INVALID_PARAMETER, A->getLine(), "Maximum can't be less than Minimum");
+                                                              }
+                                                            } else {
+                                                              if (MaxU2 < MinU2) {
+                                                                _PCATCH (VFR_RETURN_INVALID_PARAMETER, A->getLine(), "Maximum can't be less than Minimum");
+                                                              }
                                                             }
                                                             break;
                                                           case EFI_IFR_TYPE_NUM_SIZE_8 :  
-                                                            MaxU1 = _STOU8(A->getText());  
-                                                            if (MaxU1 < MinU1) {
-                                                              _PCATCH (VFR_RETURN_INVALID_PARAMETER, A->getLine(), "Maximum can't be less than Minimum");
+                                                            MaxU1 = _STOU8(A->getText(), A->getLine());
+                                                            if (IntDecStyle) {
+                                                              if (MaxNegative) {
+                                                                if (MaxU1 > 0x80) {
+                                                                  _PCATCH (VFR_RETURN_INVALID_PARAMETER, A->getLine(), "INT8 type maximum can't small than -0x80, big than 0x7F");
+                                                                }
+                                                              } else {
+                                                                if (MaxU1 > 0x7F) {
+                                                                  _PCATCH (VFR_RETURN_INVALID_PARAMETER, A->getLine(), "INT8 type maximum can't small than -0x80, big than 0x7F");
+                                                                }
+                                                              }
+                                                            }
+                                                            if (MaxNegative) {
+                                                              MaxU1 = ~MaxU1 + 1;
+                                                            }
+                                                            if (IntDecStyle) {
+                                                              if ((INT8) MaxU1 < (INT8) MinU1) {
+                                                                _PCATCH (VFR_RETURN_INVALID_PARAMETER, A->getLine(), "Maximum can't be less than Minimum");
+                                                              }
+                                                            } else {
+                                                              if (MaxU1 < MinU1) {
+                                                                _PCATCH (VFR_RETURN_INVALID_PARAMETER, A->getLine(), "Maximum can't be less than Minimum");
+                                                              }
                                                             }
                                                             break;
                                                           }
@@ -2207,10 +2624,10 @@ vfrSetMinMaxStep[CIfrMinMaxStepData & MMSDObj] :
     STEP    "=" S:Number ","
                                                        <<
                                                           switch (_GET_CURRQEST_DATATYPE()) {
-                                                          case EFI_IFR_TYPE_NUM_SIZE_64 : StepU8 = _STOU64(S->getText()); break;
-                                                          case EFI_IFR_TYPE_NUM_SIZE_32 : StepU4 = _STOU32(S->getText()); break;
-                                                          case EFI_IFR_TYPE_NUM_SIZE_16 : StepU2 = _STOU16(S->getText()); break;
-                                                          case EFI_IFR_TYPE_NUM_SIZE_8 :  StepU1 = _STOU8(S->getText());  break;
+                                                          case EFI_IFR_TYPE_NUM_SIZE_64 : StepU8 = _STOU64(S->getText(), S->getLine()); break;
+                                                          case EFI_IFR_TYPE_NUM_SIZE_32 : StepU4 = _STOU32(S->getText(), S->getLine()); break;
+                                                          case EFI_IFR_TYPE_NUM_SIZE_16 : StepU2 = _STOU16(S->getText(), S->getLine()); break;
+                                                          case EFI_IFR_TYPE_NUM_SIZE_8 :  StepU1 = _STOU8(S->getText(), S->getLine());  break;
                                                           }
                                                        >>
   }
@@ -2277,8 +2694,9 @@ vfrNumericFlags [CIfrNumeric & NObj, UINT32 LineNum] :
      UINT8 HFlags = 0;
      EFI_VFR_VARSTORE_TYPE VarStoreType = EFI_VFR_VARSTORE_INVALID;
      BOOLEAN IsSetType = FALSE;
+     BOOLEAN IsDisplaySpecified = FALSE;
   >>
-  numericFlagsField[HFlags, LFlags, IsSetType] ( "\|" numericFlagsField[HFlags, LFlags, IsSetType] )*
+  numericFlagsField[HFlags, LFlags, IsSetType, IsDisplaySpecified] ( "\|" numericFlagsField[HFlags, LFlags, IsSetType, IsDisplaySpecified ] )*
                                                        <<
                                                           //check data type flag
                                                           if (_GET_CURRQEST_VARTINFO().mVarStoreId != EFI_VARSTORE_ID_INVALID) {
@@ -2297,19 +2715,19 @@ vfrNumericFlags [CIfrNumeric & NObj, UINT32 LineNum] :
                                                           } else if (IsSetType){
                                                             _GET_CURRQEST_VARTINFO().mVarType = LFlags & EFI_IFR_NUMERIC_SIZE;
                                                           }
-                                                          _PCATCH(NObj.SetFlags (HFlags, LFlags), LineNum);
+                                                          _PCATCH(NObj.SetFlags (HFlags, LFlags, IsDisplaySpecified), LineNum);
                                                        >>
   ;
 
-numericFlagsField [UINT8 & HFlags, UINT8 & LFlags, BOOLEAN & IsSetType] :
-    N:Number                                           << _PCATCH(_STOU8(N->getText()) == 0 ? VFR_RETURN_SUCCESS : VFR_RETURN_UNSUPPORTED, N->getLine()); >>
+numericFlagsField [UINT8 & HFlags, UINT8 & LFlags, BOOLEAN & IsSetType, BOOLEAN & IsDisplaySpecified] :
+    N:Number                                           << _PCATCH(_STOU8(N->getText(), N->getLine()) == 0 ? VFR_RETURN_SUCCESS : VFR_RETURN_UNSUPPORTED, N->getLine()); >>
   | "NUMERIC_SIZE_1"                                   << $LFlags = ($LFlags & ~EFI_IFR_NUMERIC_SIZE) | EFI_IFR_NUMERIC_SIZE_1; IsSetType = TRUE;>>
   | "NUMERIC_SIZE_2"                                   << $LFlags = ($LFlags & ~EFI_IFR_NUMERIC_SIZE) | EFI_IFR_NUMERIC_SIZE_2; IsSetType = TRUE;>>
   | "NUMERIC_SIZE_4"                                   << $LFlags = ($LFlags & ~EFI_IFR_NUMERIC_SIZE) | EFI_IFR_NUMERIC_SIZE_4; IsSetType = TRUE;>>
   | "NUMERIC_SIZE_8"                                   << $LFlags = ($LFlags & ~EFI_IFR_NUMERIC_SIZE) | EFI_IFR_NUMERIC_SIZE_8; IsSetType = TRUE;>>
-  | "DISPLAY_INT_DEC"                                  << $LFlags = ($LFlags & ~EFI_IFR_DISPLAY) | EFI_IFR_DISPLAY_INT_DEC; >>
-  | "DISPLAY_UINT_DEC"                                 << $LFlags = ($LFlags & ~EFI_IFR_DISPLAY) | EFI_IFR_DISPLAY_UINT_DEC; >>
-  | "DISPLAY_UINT_HEX"                                 << $LFlags = ($LFlags & ~EFI_IFR_DISPLAY) | EFI_IFR_DISPLAY_UINT_HEX; >>
+  | "DISPLAY_INT_DEC"                                  << $LFlags = ($LFlags & ~EFI_IFR_DISPLAY) | EFI_IFR_DISPLAY_INT_DEC; IsDisplaySpecified = TRUE;>>
+  | "DISPLAY_UINT_DEC"                                 << $LFlags = ($LFlags & ~EFI_IFR_DISPLAY) | EFI_IFR_DISPLAY_UINT_DEC; IsDisplaySpecified = TRUE;>>
+  | "DISPLAY_UINT_HEX"                                 << $LFlags = ($LFlags & ~EFI_IFR_DISPLAY) | EFI_IFR_DISPLAY_UINT_HEX; IsDisplaySpecified = TRUE;>>
   | questionheaderFlagsField[HFlags]
   ;
 
@@ -2366,8 +2784,9 @@ vfrOneofFlagsField [CIfrOneOf & OObj, UINT32 LineNum] :
      UINT8 HFlags = 0;
      EFI_VFR_VARSTORE_TYPE VarStoreType = EFI_VFR_VARSTORE_INVALID;
      BOOLEAN IsSetType = FALSE;
+     BOOLEAN IsDisplaySpecified = FALSE;
   >>
-  numericFlagsField[HFlags, LFlags, IsSetType] ( "\|" numericFlagsField[HFlags, LFlags, IsSetType] )*
+  numericFlagsField[HFlags, LFlags, IsSetType, IsDisplaySpecified] ( "\|" numericFlagsField[HFlags, LFlags, IsSetType, IsDisplaySpecified] )*
                                                        <<
                                                           //check data type flag
                                                           if (_GET_CURRQEST_VARTINFO().mVarStoreId != EFI_VARSTORE_ID_INVALID) {
@@ -2402,7 +2821,7 @@ vfrStatementString :
      UINT8 StringMinSize;
      UINT8 StringMaxSize;
   >>
-  L:String                                             << SObj.SetLineNo(L->getLine()); >>
+  L:String                                             << SObj.SetLineNo(L->getLine()); gIsStringOp = TRUE;>>
   vfrQuestionHeader[SObj] ","
   { F:FLAGS "=" vfrStringFlagsField[SObj, F->getLine()] "," }
   {
@@ -2410,8 +2829,8 @@ vfrStatementString :
   }
   MinSize "=" MIN:Number ","                           << 
                                                           VarArraySize = _GET_CURRQEST_ARRAY_SIZE();
-                                                          StringMinSize = _STOU8(MIN->getText());
-                                                          if (_STOU64(MIN->getText()) > StringMinSize) {
+                                                          StringMinSize = _STOU8(MIN->getText(), MIN->getLine());
+                                                          if (_STOU64(MIN->getText(), MIN->getLine()) > StringMinSize) {
                                                             _PCATCH (VFR_RETURN_INVALID_PARAMETER, MIN->getLine(), "String MinSize takes only one byte, which can't be larger than 0xFF.");
                                                           } else if (VarArraySize != 0 && StringMinSize > VarArraySize) {
                                                             _PCATCH (VFR_RETURN_INVALID_PARAMETER, MIN->getLine(), "String MinSize can't be larger than the max number of elements in string array.");
@@ -2419,8 +2838,8 @@ vfrStatementString :
                                                           SObj.SetMinSize (StringMinSize);
                                                        >>
   MaxSize "=" MAX:Number ","                           << 
-                                                          StringMaxSize = _STOU8(MAX->getText());
-                                                          if (_STOU64(MAX->getText()) > StringMaxSize) {
+                                                          StringMaxSize = _STOU8(MAX->getText(), MAX->getLine());
+                                                          if (_STOU64(MAX->getText(), MAX->getLine()) > StringMaxSize) {
                                                             _PCATCH (VFR_RETURN_INVALID_PARAMETER, MAX->getLine(), "String MaxSize takes only one byte, which can't be larger than 0xFF.");
                                                           } else if (VarArraySize != 0 && StringMaxSize > VarArraySize) {
                                                             _PCATCH (VFR_RETURN_INVALID_PARAMETER, MAX->getLine(), "String MaxSize can't be larger than the max number of elements in string array.");
@@ -2430,7 +2849,7 @@ vfrStatementString :
                                                           SObj.SetMaxSize (StringMaxSize);
                                                        >>
   vfrStatementQuestionOptionList
-  E:EndString                                          << CRT_END_OP (E); >>
+  E:EndString                                          << CRT_END_OP (E); gIsStringOp = FALSE;>>
   ";"
   ;
 
@@ -2444,7 +2863,7 @@ vfrStringFlagsField [CIfrString & SObj, UINT32 LineNum] :
   ;
 
 stringFlagsField [UINT8 & HFlags, UINT8 & LFlags] :
-    N:Number                                           << _PCATCH(_STOU8(N->getText()) == 0 ? VFR_RETURN_SUCCESS : VFR_RETURN_UNSUPPORTED, N->getLine()); >>
+    N:Number                                           << _PCATCH(_STOU8(N->getText(), N->getLine()) == 0 ? VFR_RETURN_SUCCESS : VFR_RETURN_UNSUPPORTED, N->getLine()); >>
   | "MULTI_LINE"                                       << $LFlags = 0x01; >>
   | questionheaderFlagsField[HFlags]
   ;
@@ -2464,8 +2883,8 @@ vfrStatementPassword :
   }
   MinSize "=" MIN:Number ","                           << 
                                                           VarArraySize = _GET_CURRQEST_ARRAY_SIZE();
-                                                          PasswordMinSize = _STOU16(MIN->getText());
-                                                          if (_STOU64(MIN->getText()) > PasswordMinSize) {
+                                                          PasswordMinSize = _STOU16(MIN->getText(), MIN->getLine());
+                                                          if (_STOU64(MIN->getText(), MIN->getLine()) > PasswordMinSize) {
                                                             _PCATCH (VFR_RETURN_INVALID_PARAMETER, MIN->getLine(), "Password MinSize takes only two byte, which can't be larger than 0xFFFF.");
                                                           } else if (VarArraySize != 0 && PasswordMinSize > VarArraySize) {
                                                             _PCATCH (VFR_RETURN_INVALID_PARAMETER, MIN->getLine(), "Password MinSize can't be larger than the max number of elements in password array.");
@@ -2473,8 +2892,8 @@ vfrStatementPassword :
                                                           PObj.SetMinSize (PasswordMinSize);
                                                        >>
   MaxSize "=" MAX:Number ","                           << 
-                                                          PasswordMaxSize = _STOU16(MAX->getText());
-                                                          if (_STOU64(MAX->getText()) > PasswordMaxSize) {
+                                                          PasswordMaxSize = _STOU16(MAX->getText(), MAX->getLine());
+                                                          if (_STOU64(MAX->getText(), MAX->getLine()) > PasswordMaxSize) {
                                                             _PCATCH (VFR_RETURN_INVALID_PARAMETER, MAX->getLine(), "Password MaxSize takes only two byte, which can't be larger than 0xFFFF.");
                                                           } else if (VarArraySize != 0 && PasswordMaxSize > VarArraySize) {
                                                             _PCATCH (VFR_RETURN_INVALID_PARAMETER, MAX->getLine(), "Password MaxSize can't be larger than the max number of elements in password array.");
@@ -2496,7 +2915,7 @@ vfrPasswordFlagsField [CIfrPassword & PObj, UINT32 LineNum] :
   ;
 
 passwordFlagsField [UINT8 & HFlags] :
-    N:Number                                           << _PCATCH(_STOU8(N->getText()) == 0 ? VFR_RETURN_SUCCESS : VFR_RETURN_UNSUPPORTED, N->getLine()); >>
+    N:Number                                           << _PCATCH(_STOU8(N->getText(), N->getLine()) == 0 ? VFR_RETURN_SUCCESS : VFR_RETURN_UNSUPPORTED, N->getLine()); >>
   | questionheaderFlagsField[HFlags]
   ;
 
@@ -2505,7 +2924,7 @@ vfrStatementOrderedList :
      CIfrOrderedList OLObj;
      UINT32 VarArraySize;
   >>
-  L:OrderedList                                        << OLObj.SetLineNo(L->getLine()); >>
+  L:OrderedList                                        << OLObj.SetLineNo(L->getLine()); gIsOrderedList = TRUE;>>
   vfrQuestionHeader[OLObj] ","
                                                        << 
                                                           VarArraySize = _GET_CURRQEST_ARRAY_SIZE();
@@ -2513,17 +2932,17 @@ vfrStatementOrderedList :
                                                        >>
   {
     MaxContainers "=" M:Number ","                     << 
-                                                          if (_STOU64(M->getText()) > _STOU8(M->getText())) {
+                                                          if (_STOU64(M->getText(), M->getLine()) > _STOU8(M->getText(), M->getLine())) {
                                                             _PCATCH (VFR_RETURN_INVALID_PARAMETER, M->getLine(), "OrderedList MaxContainers takes only one byte, which can't be larger than 0xFF.");
-                                                          } else if (VarArraySize != 0 && _STOU8(M->getText()) > VarArraySize) {
+                                                          } else if (VarArraySize != 0 && _STOU8(M->getText(), M->getLine()) > VarArraySize) {
                                                             _PCATCH (VFR_RETURN_INVALID_PARAMETER, M->getLine(), "OrderedList MaxContainers can't be larger than the max number of elements in array.");
                                                           }
-                                                          OLObj.SetMaxContainers (_STOU8(M->getText()));
+                                                          OLObj.SetMaxContainers (_STOU8(M->getText(), M->getLine()));
                                                        >>
   }
-  { F:FLAGS "=" vfrOrderedListFlags[OLObj, F->getLine()] }
+  { F:FLAGS "=" vfrOrderedListFlags[OLObj, F->getLine()] {","}}
   vfrStatementQuestionOptionList
-  E:EndList                                            << CRT_END_OP (E); >>
+  E:EndList                                            << CRT_END_OP (E); gIsOrderedList = FALSE;>>
   ";"
   ;
 
@@ -2537,7 +2956,7 @@ vfrOrderedListFlags [CIfrOrderedList & OLObj, UINT32 LineNum] :
   ;
 
 orderedlistFlagsField [UINT8 & HFlags, UINT8 & LFlags] :
-    N:Number                                           << _PCATCH(_STOU8(N->getText()) == 0 ? VFR_RETURN_SUCCESS : VFR_RETURN_UNSUPPORTED, N->getLine()); >>
+    N:Number                                           << _PCATCH(_STOU8(N->getText(), N->getLine()) == 0 ? VFR_RETURN_SUCCESS : VFR_RETURN_UNSUPPORTED, N->getLine()); >>
   | "UNIQUE"                                           << $LFlags |= 0x01; >>
   | "NOEMPTY"                                          << $LFlags |= 0x02; >>
   | questionheaderFlagsField[HFlags]
@@ -2586,8 +3005,8 @@ vfrStatementTime :
                                                           mCVfrQuestionDB.RegisterOldTimeQuestion (VarIdStr[0], VarIdStr[1], VarIdStr[2], QId);
                                                           TObj.SetQuestionId (QId);
                                                           TObj.SetFlags (EFI_IFR_QUESTION_FLAG_DEFAULT, QF_TIME_STORAGE_TIME);
-                                                          TObj.SetPrompt (_STOSID(HP->getText()));
-                                                          TObj.SetHelp (_STOSID(HH->getText()));
+                                                          TObj.SetPrompt (_STOSID(HP->getText(), HP->getLine()));
+                                                          TObj.SetHelp (_STOSID(HH->getText(), HH->getLine()));
                                                           if (VarIdStr[0] != NULL) { delete VarIdStr[0]; } if (VarIdStr[1] != NULL) { delete VarIdStr[1]; } if (VarIdStr[2] != NULL) { delete VarIdStr[2]; }
                                                        >>
                                                        << {CIfrDefault DefaultObj(Size, EFI_HII_DEFAULT_CLASS_STANDARD, EFI_IFR_TYPE_TIME, Val); DefaultObj.SetLineNo(L->getLine());} >>
@@ -2606,19 +3025,19 @@ minMaxTimeStepDefault[EFI_HII_TIME & T, UINT8 KeyValue] :
     "default" "=" N:Number ","                         <<
                                                           switch (KeyValue) {
                                                           case 0: 
-                                                            T.Hour   = _STOU8(N->getText()); 
+                                                            T.Hour   = _STOU8(N->getText(), N->getLine()); 
                                                             if (T.Hour > 23) {
                                                               _PCATCH (VFR_RETURN_INVALID_PARAMETER, N->getLine(), "Hour default value must be between 0 and 23.");
                                                             }
                                                             break;
                                                           case 1: 
-                                                            T.Minute = _STOU8(N->getText()); 
+                                                            T.Minute = _STOU8(N->getText(), N->getLine()); 
                                                             if (T.Minute > 59) {
                                                               _PCATCH (VFR_RETURN_INVALID_PARAMETER, N->getLine(), "Minute default value must be between 0 and 59.");
                                                             }
                                                             break;
                                                           case 2: 
-                                                            T.Second = _STOU8(N->getText());
+                                                            T.Second = _STOU8(N->getText(), N->getLine());
                                                             if (T.Second > 59) {
                                                               _PCATCH (VFR_RETURN_INVALID_PARAMETER, N->getLine(), "Second default value must be between 0 and 59.");
                                                             }
@@ -2635,7 +3054,7 @@ vfrTimeFlags [CIfrTime & TObj, UINT32 LineNum] :
   ;
 
 timeFlagsField [UINT8 & Flags] :
-    N:Number                                           << $Flags |= _STOU8(N->getText()); >>
+    N:Number                                           << $Flags |= _STOU8(N->getText(), N->getLine()); >>
   | "HOUR_SUPPRESS"                                    << $Flags |= 0x01; >>
   | "MINUTE_SUPPRESS"                                  << $Flags |= 0x02; >>
   | "SECOND_SUPPRESS"                                  << $Flags |= 0x04; >>
@@ -2652,7 +3071,7 @@ vfrStatementQuestionTag :
   vfrStatementRefresh           |
   vfrStatementVarstoreDevice    |
   vfrStatementExtension         |
-  vfrStatementRefreshEvent      |
+  vfrStatementRefreshEvent ","  |
   vfrStatementWarningIf
   ;
 
@@ -2714,7 +3133,7 @@ vfrStatementInconsistentIfStat :
                                                           }
                                                           IIObj.SetLineNo(L->getLine());
                                                        >>
-  Prompt "=" "STRING_TOKEN" "\(" S:Number "\)" ","     << IIObj.SetError (_STOSID(S->getText())); >>
+  Prompt "=" "STRING_TOKEN" "\(" S:Number "\)" ","     << IIObj.SetError (_STOSID(S->getText(), S->getLine())); >>
   { FLAGS "=" flagsField ( "\|" flagsField )* "," }
   vfrStatementExpression[0]
   E:EndIf                                              << CRT_END_OP (E); >>
@@ -2796,7 +3215,7 @@ vfrStatementGrayOutIfStatOld :
 
 vfrImageTag :
   << CIfrImage IObj; >>
-  L:Image "=" "IMAGE_TOKEN" "\(" S1:Number "\)"        << IObj.SetImageId (_STOSID(S1->getText())); IObj.SetLineNo(L->getLine()); >>
+  L:Image "=" "IMAGE_TOKEN" "\(" S1:Number "\)"        << IObj.SetImageId (_STOSID(S1->getText(), S1->getLine())); IObj.SetLineNo(L->getLine()); >>
   ;
 
 vfrLockedTag :
@@ -2836,7 +3255,7 @@ vfrStatementLocked :
 vfrStatementInconsistentIf :
   << CIfrInconsistentIf IIObj; >>
   L:InconsistentIf                                     << IIObj.SetLineNo(L->getLine()); >>
-  Prompt "=" "STRING_TOKEN" "\(" S:Number "\)" ","     << IIObj.SetError (_STOSID(S->getText())); >>
+  Prompt "=" "STRING_TOKEN" "\(" S:Number "\)" ","     << IIObj.SetError (_STOSID(S->getText(), S->getLine())); >>
   { FLAGS "=" flagsField ( "\|" flagsField )* "," }
   vfrStatementExpression[0]
   E:EndIf                                              << CRT_END_OP (E); >>
@@ -2845,7 +3264,7 @@ vfrStatementInconsistentIf :
 vfrStatementNoSubmitIf :
   << CIfrNoSubmitIf NSIObj; >>
   L:NoSubmitIf                                         << NSIObj.SetLineNo(L->getLine()); >>
-  Prompt "=" "STRING_TOKEN" "\(" S:Number "\)" ","     << NSIObj.SetError (_STOSID(S->getText())); >>
+  Prompt "=" "STRING_TOKEN" "\(" S:Number "\)" ","     << NSIObj.SetError (_STOSID(S->getText(), S->getLine())); >>
   { FLAGS "=" flagsField ( "\|" flagsField )* "," }
   vfrStatementExpression[0]
   E:EndIf                                              << CRT_END_OP (E); >>
@@ -2854,8 +3273,8 @@ vfrStatementNoSubmitIf :
 vfrStatementWarningIf :
   << CIfrWarningIf WIObj; >>
   L:WarningIf                                          << WIObj.SetLineNo(L->getLine()); >>
-  Prompt "=" "STRING_TOKEN" "\(" S:Number "\)" ","     << WIObj.SetWarning (_STOSID(S->getText())); >>
-  {Timeout "=" T:Number ","                            << WIObj.SetTimeOut (_STOU8(T->getText())); >>}
+  Prompt "=" "STRING_TOKEN" "\(" S:Number "\)" ","     << WIObj.SetWarning (_STOSID(S->getText(), S->getLine())); >>
+  {Timeout "=" T:Number ","                            << WIObj.SetTimeOut (_STOU8(T->getText(), T->getLine())); >>}
   vfrStatementExpression[0]
   E:EndIf                                              << CRT_END_OP (E); >>
   ;
@@ -2873,7 +3292,7 @@ vfrStatementDisableIfQuest :
 vfrStatementRefresh :
   << CIfrRefresh RObj; >>
   L:Refresh                                            << RObj.SetLineNo(L->getLine()); >>
-  Interval "=" I:Number                                << RObj.SetRefreshInterval (_STOU8(I->getText())); >>
+  Interval "=" I:Number                                << RObj.SetRefreshInterval (_STOU8(I->getText(), I->getLine())); >>
   ;
 
 vfrStatementRefreshEvent :
@@ -2882,13 +3301,13 @@ vfrStatementRefreshEvent :
     EFI_GUID      Guid;
   >>
   L:RefreshGuid                                        << RiObj.SetLineNo(L->getLine()); >>
-  "="  guidDefinition[Guid] ","                        << RiObj.SetRefreshEventGroutId (&Guid);  >>
+  "="  guidDefinition[Guid]                            << RiObj.SetRefreshEventGroutId (&Guid);  >>
   ;
 
 vfrStatementVarstoreDevice :
   << CIfrVarStoreDevice VDObj; >>
   L:VarstoreDevice                                     << VDObj.SetLineNo(L->getLine()); >>
-  "=" "STRING_TOKEN" "\(" S:Number "\)" ","            << VDObj.SetDevicePath (_STOSID(S->getText())); >>
+  "=" "STRING_TOKEN" "\(" S:Number "\)" ","            << VDObj.SetDevicePath (_STOSID(S->getText(), S->getLine())); >>
   ;
 
 vfrStatementSuppressIfQuest :
@@ -2915,64 +3334,117 @@ vfrStatementOptions :
 
 vfrStatementOneOfOption :
   <<
-     EFI_IFR_TYPE_VALUE Val           = gZeroEfiIfrTypeValue;
+     UINT8              ValueList[EFI_IFR_MAX_LENGTH] = {0,};
+     EFI_IFR_TYPE_VALUE *Val          = (EFI_IFR_TYPE_VALUE *) ValueList;
      CHAR8              *VarStoreName = NULL;
      UINT32             Size          = 0;
      BOOLEAN            TypeError     = FALSE;
      EFI_VFR_RETURN_CODE ReturnCode   = VFR_RETURN_SUCCESS;
      EFI_GUID           *VarStoreGuid = NULL;
-     
-     if (_GET_CURRQEST_DATATYPE() == EFI_IFR_TYPE_OTHER) {
-       TypeError = TRUE;
-       Size = sizeof (EFI_IFR_TYPE_VALUE);
-     } else {
-       ReturnCode = gCVfrVarDataTypeDB.GetDataTypeSize (_GET_CURRQEST_DATATYPE(), &Size);
-     }
-
-     Size += OFFSET_OF (EFI_IFR_ONE_OF_OPTION, Value);
-     CIfrOneOfOption    OOOObj ((UINT8)Size);
+     BOOLEAN            ArrayType     = FALSE;
+     CIfrOneOfOption    *OOOObj;
+     UINT8              *Type8        = (UINT8  *) ValueList;
+     UINT16             *Type16       = (UINT16 *) ValueList;
+     UINT32             *Type32       = (UINT32 *) ValueList;
+     UINT64             *Type64       = (UINT64 *) ValueList;
   >>
   L:Option                                             <<      
-                                                          OOOObj.SetLineNo(L->getLine());
-                                                          if (TypeError) {
+                                                          if (_GET_CURRQEST_DATATYPE() == EFI_IFR_TYPE_OTHER) {
                                                             _PCATCH (VFR_RETURN_FATAL_ERROR, L->getLine(), "Get data type error.");
                                                           }
-                                                          if (ReturnCode != VFR_RETURN_SUCCESS) {
-                                                            _PCATCH (ReturnCode, L->getLine());
-                                                          }
+
                                                        >>
-  Text  "=" "STRING_TOKEN" "\(" S:Number "\)" ","      << OOOObj.SetOption (_STOSID(S->getText())); >>
-  Value "=" vfrConstantValueField[_GET_CURRQEST_DATATYPE()] >[Val] ","    
+  Text  "=" "STRING_TOKEN" "\(" S:Number "\)" ","      
+  Value "=" vfrConstantValueField[_GET_CURRQEST_DATATYPE(), *Val, ArrayType] ","
                                                        << 
                                                           if (gCurrentMinMaxData != NULL) {
                                                             //set min/max value for oneof opcode
                                                             UINT64 Step = gCurrentMinMaxData->GetStepData(_GET_CURRQEST_DATATYPE());
                                                             switch (_GET_CURRQEST_DATATYPE()) {
                                                             case EFI_IFR_TYPE_NUM_SIZE_64:
-                                                              gCurrentMinMaxData->SetMinMaxStepData(Val.u64, Val.u64, Step);
+                                                              gCurrentMinMaxData->SetMinMaxStepData(Val->u64, Val->u64, Step);
                                                               break;
                                                             case EFI_IFR_TYPE_NUM_SIZE_32:
-                                                              gCurrentMinMaxData->SetMinMaxStepData(Val.u32, Val.u32, (UINT32) Step);
+                                                              gCurrentMinMaxData->SetMinMaxStepData(Val->u32, Val->u32, (UINT32) Step);
                                                               break;
                                                             case EFI_IFR_TYPE_NUM_SIZE_16:
-                                                              gCurrentMinMaxData->SetMinMaxStepData(Val.u16, Val.u16, (UINT16) Step);
+                                                              gCurrentMinMaxData->SetMinMaxStepData(Val->u16, Val->u16, (UINT16) Step);
                                                               break;
                                                             case EFI_IFR_TYPE_NUM_SIZE_8:
-                                                              gCurrentMinMaxData->SetMinMaxStepData(Val.u8, Val.u8, (UINT8) Step);
+                                                              gCurrentMinMaxData->SetMinMaxStepData(Val->u8, Val->u8, (UINT8) Step);
                                                               break;
                                                             default:
                                                               break;
                                                             }
                                                           }
-                                                          OOOObj.SetType (_GET_CURRQEST_DATATYPE()); 
-                                                          OOOObj.SetValue (Val); 
+                                                          if (_GET_CURRQEST_DATATYPE() == EFI_IFR_TYPE_OTHER) {
+                                                            Size = sizeof (EFI_IFR_TYPE_VALUE);
+                                                          } else if (ArrayType) {
+                                                            switch (_GET_CURRQEST_DATATYPE()) {
+	                                                          case EFI_IFR_TYPE_NUM_SIZE_8 :
+    	                                                        while (Type8[Size] != 0) {
+    	                                                          Size++;
+    	                                                        }
+    	                                                        break;
+    	                                                      case EFI_IFR_TYPE_NUM_SIZE_16 :
+    	                                                        while (Type16[Size] != 0) {
+    	                                                          Size++;
+    	                                                        }
+    	                                                        Size *= sizeof (UINT16);
+    	                                                        break;
+    	                                                      case EFI_IFR_TYPE_NUM_SIZE_32 :
+    	                                                        while (Type32[Size] != 0) {
+    	                                                          Size++;
+    	                                                        }
+    	                                                        Size *= sizeof (UINT32);
+    	                                                        break;
+    	                                                      case EFI_IFR_TYPE_NUM_SIZE_64 :
+    	                                                        while (Type64[Size] != 0) {
+    	                                                          Size++;
+    	                                                        }
+    	                                                        Size *= sizeof (UINT64);
+    	                                                        break;
+    	                                                      default:
+    	                                                        break;
+                                                            }
+                                                          } else {
+                                                            ReturnCode = gCVfrVarDataTypeDB.GetDataTypeSize (_GET_CURRQEST_DATATYPE(), &Size);
+                                                          }
+                                                          if (ReturnCode != VFR_RETURN_SUCCESS) {
+                                                            _PCATCH (ReturnCode, L->getLine());
+                                                          }
+
+                                                          Size += OFFSET_OF (EFI_IFR_ONE_OF_OPTION, Value);
+                                                          OOOObj = new CIfrOneOfOption((UINT8)Size);
+                                                          OOOObj->SetLineNo(L->getLine());
+                                                          OOOObj->SetOption (_STOSID(S->getText(), S->getLine())); 
+                                                          if (ArrayType) {
+                                                            OOOObj->SetType (EFI_IFR_TYPE_BUFFER); 
+                                                          } else {
+                                                            OOOObj->SetType (_GET_CURRQEST_DATATYPE()); 
+                                                          }
+                                                          OOOObj->SetValue (*Val); 
                                                        >>
-  F:FLAGS "=" vfrOneOfOptionFlags[OOOObj, F->getLine()]
+  F:FLAGS "=" vfrOneOfOptionFlags[*OOOObj, F->getLine()]
                                                        <<
+                                                          //
+                                                          // Array type only for default type OneOfOption.
+                                                          //
+                                                          if ((OOOObj->GetFlags () & (EFI_IFR_OPTION_DEFAULT | EFI_IFR_OPTION_DEFAULT_MFG)) == 0 && ArrayType) {
+                                                            _PCATCH (VFR_RETURN_FATAL_ERROR, L->getLine(), "Default keyword should with array value type!");
+                                                          }
+
+                                                          //
+                                                          // Clear the default flag if the option not use array value but has default flag.
+                                                          //
+                                                          if ((OOOObj->GetFlags () & (EFI_IFR_OPTION_DEFAULT | EFI_IFR_OPTION_DEFAULT_MFG)) != 0 && !ArrayType && gIsOrderedList) {
+                                                            OOOObj->SetFlags(OOOObj->GetFlags () & ~(EFI_IFR_OPTION_DEFAULT | EFI_IFR_OPTION_DEFAULT_MFG));
+                                                          }
+
                                                           if (_GET_CURRQEST_VARTINFO().mVarStoreId != EFI_VARSTORE_ID_INVALID) {
                                                             _PCATCH(mCVfrDataStorage.GetVarStoreName (_GET_CURRQEST_VARTINFO().mVarStoreId, &VarStoreName), L->getLine());
                                                             VarStoreGuid = mCVfrDataStorage.GetVarStoreGuid(_GET_CURRQEST_VARTINFO().mVarStoreId);
-                                                            if (OOOObj.GetFlags () & 0x10) {
+                                                            if (OOOObj->GetFlags () & EFI_IFR_OPTION_DEFAULT) {
                                                               CheckDuplicateDefaultValue (EFI_HII_DEFAULT_CLASS_STANDARD, F);
                                                               _PCATCH(mCVfrDefaultStore.BufferVarStoreAltConfigAdd (
                                                                         EFI_HII_DEFAULT_CLASS_STANDARD,
@@ -2980,10 +3452,10 @@ vfrStatementOneOfOption :
                                                                         VarStoreName,
                                                                         VarStoreGuid,
                                                                         _GET_CURRQEST_DATATYPE (),
-                                                                        Val
+                                                                        *Val
                                                                         ), L->getLine());
                                                             }
-                                                            if (OOOObj.GetFlags () & 0x20) {
+                                                            if (OOOObj->GetFlags () & EFI_IFR_OPTION_DEFAULT_MFG) {
                                                               CheckDuplicateDefaultValue (EFI_HII_DEFAULT_CLASS_MANUFACTURING, F);
                                                               _PCATCH(mCVfrDefaultStore.BufferVarStoreAltConfigAdd (
                                                                         EFI_HII_DEFAULT_CLASS_MANUFACTURING,
@@ -2991,7 +3463,7 @@ vfrStatementOneOfOption :
                                                                         VarStoreName,
                                                                         VarStoreGuid,
                                                                         _GET_CURRQEST_DATATYPE (),
-                                                                        Val
+                                                                        *Val
                                                                         ), L->getLine());
                                                             }
                                                           }
@@ -3006,16 +3478,16 @@ vfrStatementOneOfOption :
                                                          //
                                                          CIfrOptionKey IfrOptionKey (
                                                                          gCurrentQuestion->QUESTION_ID(),
-                                                                         Val,
-                                                                         _STOQID(KN->getText())
+                                                                         *Val,
+                                                                         _STOQID(KN->getText(), KN->getLine())
                                                                          );
                                                          SET_LINE_INFO (IfrOptionKey, KN);
                                                        >>
   }
   (
-    T:"," vfrImageTag                                  << OOOObj.SetScope (1); CRT_END_OP (T); >>
+    T:"," vfrImageTag                                  << OOOObj->SetScope (1); CRT_END_OP (T); >>
   )*
-  ";"
+  ";"                                                  << if (OOOObj != NULL) {delete OOOObj;} >>
   ;
 
 vfrOneOfOptionFlags [CIfrOneOfOption & OOOObj, UINT32 LineNum] :
@@ -3029,15 +3501,36 @@ vfrOneOfOptionFlags [CIfrOneOfOption & OOOObj, UINT32 LineNum] :
   ;
 
 oneofoptionFlagsField [UINT8 & HFlags, UINT8 & LFlags] :
-    N:Number                                           << $LFlags |= _STOU8(N->getText()); >>
+    N:Number                                           << $LFlags |= _STOU8(N->getText(), N->getLine()); >>
   | "OPTION_DEFAULT"                                   << $LFlags |= 0x10; >>
   | "OPTION_DEFAULT_MFG"                               << $LFlags |= 0x20; >>
   | InteractiveFlag                                    << $HFlags |= 0x04; >>
-  | NVAccessFlag                                       << $HFlags |= 0x08; >>
   | ResetRequiredFlag                                  << $HFlags |= 0x10; >>
-  | LateCheckFlag                                      << $HFlags |= 0x20; >>
+  | ReconnectRequiredFlag                              << $HFlags |= 0x40; >>
   | ManufacturingFlag                                  << $LFlags |= 0x20; >>
   | DefaultFlag                                        << $LFlags |= 0x10; >>
+  | A:NVAccessFlag                                     << 
+                                                          if (mCompatibleMode) {
+                                                            $HFlags |= 0x08;
+                                                          } else {
+                                                            gCVfrErrorHandle.HandleWarning (
+                                                              VFR_WARNING_OBSOLETED_FRAMEWORK_OPCODE,
+                                                              A->getLine(),
+                                                              A->getText()
+                                                              );
+                                                          }
+                                                       >>
+  | L:LateCheckFlag                                    << 
+                                                          if (mCompatibleMode) {
+                                                            $HFlags |= 0x20;
+                                                          } else {
+                                                            gCVfrErrorHandle.HandleWarning (
+                                                              VFR_WARNING_OBSOLETED_FRAMEWORK_OPCODE,
+                                                              L->getLine(),
+                                                              L->getText()
+                                                              );
+                                                          }
+                                                       >>
   ;
 
 vfrStatementLabel :
@@ -3055,7 +3548,7 @@ vfrStatementLabel :
                                                           {
                                                             CIfrLabel LObj2;
                                                             LObj2.SetLineNo(L->getLine());
-                                                            LObj2.SetNumber (_STOU16(N->getText()));
+                                                            LObj2.SetNumber (_STOU16(N->getText(), N->getLine()));
                                                           }
                                                        >>
   ";"
@@ -3064,10 +3557,10 @@ vfrStatementLabel :
 vfrStatementBanner :
   << CIfrBanner BObj; >>
   B:Banner { "," }                                     << BObj.SetLineNo(B->getLine()); >>
-  Title "=" "STRING_TOKEN" "\(" S:Number "\)" ","      << BObj.SetTitle (_STOSID(S->getText())); >>
+  Title "=" "STRING_TOKEN" "\(" S:Number "\)" ","      << BObj.SetTitle (_STOSID(S->getText(), S->getLine())); >>
   (
     (
-      Line L:Number ","                                << BObj.SetLine (_STOU16(L->getText())); >>
+      Line L:Number ","                                << BObj.SetLine (_STOU16(L->getText(), L->getLine())); >>
       Align
       (
           Left                                         << BObj.SetAlign (0); >>
@@ -3077,7 +3570,7 @@ vfrStatementBanner :
     )
     |
     (
-      Timeout "=" T:Number ";"                         << {CIfrTimeout TObj(_STOU16(T->getText()));} >>
+      Timeout "=" T:Number ";"                         << {CIfrTimeout TObj(_STOU16(T->getText(), T->getLine()));} >>
     )
   )
   ;
@@ -3177,6 +3670,7 @@ vfrStatementInvalidSaveRestoreDefaults :
 #token ToUpper("toupper")                       "toupper"
 #token ToLower("tolower")                       "tolower"
 #token Match("match")                           "match"
+#token Match2("match2")                         "match2"
 #token Catenate("catenate")                     "catenate"
 #token QuestionRefVal("questionrefval")         "questionrefval"
 #token StringRefVal("stringrefval")             "stringrefval"
@@ -3345,6 +3839,7 @@ castTerm [UINT32 & RootLevel, UINT32 & ExpOpCount]:
 atomTerm [UINT32 & RootLevel, UINT32 & ExpOpCount]:
     vfrExpressionCatenate[$RootLevel, $ExpOpCount]
   | vfrExpressionMatch[$RootLevel, $ExpOpCount]
+  | vfrExpressionMatch2[$RootLevel, $ExpOpCount]
   | vfrExpressionParen[$RootLevel, $ExpOpCount]
   | vfrExpressionBuildInFunction[$RootLevel, $ExpOpCount]
   | vfrExpressionConstant[$RootLevel, $ExpOpCount]
@@ -3373,6 +3868,20 @@ vfrExpressionMatch [UINT32 & RootLevel, UINT32 & ExpOpCount]:
   ","
   vfrStatementExpressionSub[$RootLevel + 1, $ExpOpCount]
   "\)"                                                 << { CIfrMatch MObj(L->getLine()); $ExpOpCount++; } >>
+  ;
+
+vfrExpressionMatch2 [UINT32 & RootLevel, UINT32 & ExpOpCount]:
+  <<
+    EFI_GUID      Guid;
+  >>
+  L:Match2
+  "\("
+  vfrStatementExpressionSub[$RootLevel + 1, $ExpOpCount]
+  ","
+  vfrStatementExpressionSub[$RootLevel + 1, $ExpOpCount]
+  ","
+  guidDefinition[Guid]
+  "\)"                                                 << { CIfrMatch2 M2Obj(L->getLine(), &Guid); $ExpOpCount++; } >>
   ;
 
 vfrExpressionParen [UINT32 & RootLevel, UINT32 & ExpOpCount]:
@@ -3423,7 +3932,7 @@ vareqvalExp [UINT32 & RootLevel, UINT32 & ExpOpCount] :
                                                             _PCATCH (mCVfrDataStorage.DeclareEfiVarStore (
                                                                                         VarIdStr,
                                                                                         &mFormsetGuid,
-                                                                                        _STOSID(VN->getText()),
+                                                                                        _STOSID(VN->getText(), VN->getLine()),
                                                                                         0x2,   //default type is UINT16
                                                                                         FALSE
                                                                                         ), VN);
@@ -3437,7 +3946,7 @@ vareqvalExp [UINT32 & RootLevel, UINT32 & ExpOpCount] :
   (
     (
       "=="
-      V1:Number                                        << ConstVal = _STOU16(V1->getText()); >>
+      V1:Number                                        << ConstVal = _STOU16(V1->getText(), V1->getLine()); >>
                                                        <<
                                                           if (Mask == 0) {
                                                             CIfrEqIdVal EIVObj (L->getLine());
@@ -3453,25 +3962,25 @@ vareqvalExp [UINT32 & RootLevel, UINT32 & ExpOpCount] :
     |
     (
       "<="
-      V2:Number                                        << ConstVal = _STOU16(V2->getText()); >>
+      V2:Number                                        << ConstVal = _STOU16(V2->getText(), V2->getLine()); >>
                                                        << IdEqValDoSpecial ($ExpOpCount, L->getLine(), QId, VarIdStr, Mask, ConstVal, LESS_EQUAL); >>
     )
     |
     (
       "<"
-      V3:Number                                        << ConstVal = _STOU16(V3->getText()); >>
+      V3:Number                                        << ConstVal = _STOU16(V3->getText(), V3->getLine()); >>
                                                        << IdEqValDoSpecial ($ExpOpCount, L->getLine(), QId, VarIdStr, Mask, ConstVal, LESS_THAN); >>
     )
     |
     (
       ">="
-      V4:Number                                        << ConstVal = _STOU16(V4->getText()); >>
+      V4:Number                                        << ConstVal = _STOU16(V4->getText(), V4->getLine()); >>
                                                        << IdEqValDoSpecial ($ExpOpCount, L->getLine(), QId, VarIdStr, Mask, ConstVal, GREATER_EQUAL); >>
     )
     |
     (
       ">"
-      V5:Number                                        << ConstVal = _STOU16(V5->getText()); >>
+      V5:Number                                        << ConstVal = _STOU16(V5->getText(), V5->getLine()); >>
                                                        << IdEqValDoSpecial ($ExpOpCount, L->getLine(), QId, VarIdStr, Mask, ConstVal, GREATER_THAN); >>
     )
   )
@@ -3490,7 +3999,7 @@ ideqvalExp [UINT32 & RootLevel, UINT32 & ExpOpCount] :
   (
     (
       "=="
-      V1:Number                                        << ConstVal = _STOU16(V1->getText()); >>
+      V1:Number                                        << ConstVal = _STOU16(V1->getText(), V1->getLine()); >>
                                                        <<
                                                           if (Mask == 0) {
                                                             CIfrEqIdVal EIVObj (L->getLine());
@@ -3506,25 +4015,25 @@ ideqvalExp [UINT32 & RootLevel, UINT32 & ExpOpCount] :
     |
     (
       "<="
-      V2:Number                                        << ConstVal = _STOU16(V2->getText()); >>
+      V2:Number                                        << ConstVal = _STOU16(V2->getText(), V2->getLine()); >>
                                                        << IdEqValDoSpecial ($ExpOpCount, L->getLine(), QId, VarIdStr, Mask, ConstVal, LESS_EQUAL); >>
     )
     |
     (
       "<"
-      V3:Number                                        << ConstVal = _STOU16(V3->getText()); >>
+      V3:Number                                        << ConstVal = _STOU16(V3->getText(), V3->getLine()); >>
                                                        << IdEqValDoSpecial ($ExpOpCount, L->getLine(), QId, VarIdStr, Mask, ConstVal, LESS_THAN); >>
     )
     |
     (
       ">="
-      V4:Number                                        << ConstVal = _STOU16(V4->getText()); >>
+      V4:Number                                        << ConstVal = _STOU16(V4->getText(), V4->getLine()); >>
                                                        << IdEqValDoSpecial ($ExpOpCount, L->getLine(), QId, VarIdStr, Mask, ConstVal, GREATER_EQUAL); >>
     )
     |
     (
       ">"
-      V5:Number                                        << ConstVal = _STOU16(V5->getText()); >>
+      V5:Number                                        << ConstVal = _STOU16(V5->getText(), V5->getLine()); >>
                                                        << IdEqValDoSpecial ($ExpOpCount, L->getLine(), QId, VarIdStr, Mask, ConstVal, GREATER_THAN); >>
     )
   )
@@ -3595,7 +4104,7 @@ ideqvallistExp[UINT32 & RootLevel, UINT32 & ExpOpCount] :
   vfrQuestionDataFieldName[QId, Mask, VarIdStr, LineNo]
   "=="
   (
-    V:Number                                           << ValueList[ListLen] = _STOU16(V->getText()); ListLen++; >>
+    V:Number                                           << ValueList[ListLen] = _STOU16(V->getText(), V->getLine()); ListLen++; >>
   )+
                                                        <<
                                                           if (Mask != 0) {
@@ -3637,7 +4146,7 @@ questionref1Exp[UINT32 & RootLevel, UINT32 & ExpOpCount] :
                                                           LineNo = QN->getLine();
                                                           mCVfrQuestionDB.GetQuestionId (QN->getText(), NULL, QId, BitMask);
                                                        >>
-        | ID:Number                                    << QId = _STOQID(ID->getText()); >>
+        | ID:Number                                    << QId = _STOQID(ID->getText(), ID->getLine()); >>
       )
   "\)"
                                                        <<
@@ -3662,9 +4171,9 @@ stringref1Exp[UINT32 & RootLevel, UINT32 & ExpOpCount] :
       ( 
         "STRING_TOKEN"
         "\(" 
-          S:Number << RefStringId = _STOSID(S->getText()); >>
+          S:Number << RefStringId = _STOSID(S->getText(), S->getLine()); >>
         "\)"
-        | I:Number << RefStringId = _STOSID(I->getText()); >>
+        | I:Number << RefStringId = _STOSID(I->getText(), I->getLine()); >>
       )
   "\)" << { CIfrStringRef1 SR1Obj(L->getLine()); _SAVE_OPHDR_COND (SR1Obj, ($ExpOpCount == 0), L->getLine()); SR1Obj.SetStringId (RefStringId); $ExpOpCount++; } >>
   ;
@@ -3767,7 +4276,7 @@ vfrExpressionConstant[UINT32 & RootLevel, UINT32 & ExpOpCount] :
   | L5:Zero                                            << CIfrZero ZObj(L5->getLine()); _SAVE_OPHDR_COND (ZObj, ($ExpOpCount == 0), L5->getLine()); $ExpOpCount++; >>
   | L6:Undefined                                       << CIfrUndefined UObj(L6->getLine()); _SAVE_OPHDR_COND (UObj, ($ExpOpCount == 0), L6->getLine()); $ExpOpCount++; >>
   | L7:Version                                         << CIfrVersion VObj(L7->getLine()); _SAVE_OPHDR_COND (VObj, ($ExpOpCount == 0), L7->getLine()); $ExpOpCount++; >>
-  | V:Number                                           << CIfrUint64 U64Obj(V->getLine()); U64Obj.SetValue (_STOU64(V->getText())); _SAVE_OPHDR_COND (U64Obj, ($ExpOpCount == 0), V->getLine()); $ExpOpCount++; >>
+  | V:Number                                           << CIfrUint64 U64Obj(V->getLine()); U64Obj.SetValue (_STOU64(V->getText(), V->getLine())); _SAVE_OPHDR_COND (U64Obj, ($ExpOpCount == 0), V->getLine()); $ExpOpCount++; >>
   ;
 
 vfrExpressionUnaryOp[UINT32 & RootLevel, UINT32 & ExpOpCount] :
@@ -3804,7 +4313,7 @@ question23refExp[UINT32 & RootLevel, UINT32 & ExpOpCount] :
   L:QuestionRefVal
   "\("
       {
-        DevicePath "=" "STRING_TOKEN" "\(" S:Number "\)" ","    << Type = 0x2; DevPath = _STOSID(S->getText()); >>
+        DevicePath "=" "STRING_TOKEN" "\(" S:Number "\)" ","    << Type = 0x2; DevPath = _STOSID(S->getText(), S->getLine()); >>
       }
       {
         Uuid "=" guidDefinition[Guid] ","                       << Type = 0x3; >>
@@ -3837,7 +4346,7 @@ tostringExp[UINT32 & RootLevel, UINT32 & ExpOpCount] :
   << UINT8 Fmt = 0; >>
   L:StringVal
   {
-    Format "=" F:Number ","                            << Fmt = _STOU8(F->getText()); >>
+    Format "=" F:Number ","                            << Fmt = _STOU8(F->getText(), F->getLine()); >>
   }
   "\(" vfrStatementExpressionSub[$RootLevel + 1, $ExpOpCount] "\)"
                                                        << { CIfrToString TSObj(L->getLine()); TSObj.SetFormat (Fmt); $ExpOpCount++; } >>
@@ -4023,7 +4532,7 @@ vfrExpressionMap [UINT32 & RootLevel, UINT32 & ExpOpCount]:
   ;
 
 spanFlags [UINT8 & Flags] :
-    N:Number                                           << $Flags |= _STOU8(N->getText()); >>
+    N:Number                                           << $Flags |= _STOU8(N->getText(), N->getLine()); >>
   | "LAST_NON_MATCH"                                   << $Flags |= 0x00; >>
   | "FIRST_NON_MATCH"                                  << $Flags |= 0x01; >>
   ;
@@ -4091,17 +4600,17 @@ public:
 
   CHAR8*              TrimHex (IN CHAR8 *, OUT BOOLEAN *);
   CHAR8*              _U32TOS (IN UINT32);
-  UINT8               _STOU8  (IN CHAR8 *);
-  UINT16              _STOU16 (IN CHAR8 *);
-  UINT32              _STOU32 (IN CHAR8 *);
-  UINT64              _STOU64 (IN CHAR8 *);
-  EFI_HII_DATE        _STOD   (IN CHAR8 *, IN CHAR8 *, IN CHAR8 *);
-  EFI_HII_TIME        _STOT   (IN CHAR8 *, IN CHAR8 *, IN CHAR8 *);
-  EFI_HII_REF         _STOR   (IN CHAR8 *, IN CHAR8 *, IN EFI_GUID *, IN CHAR8 *);
+  UINT8               _STOU8  (IN CHAR8 *, IN UINT32);
+  UINT16              _STOU16 (IN CHAR8 *, IN UINT32);
+  UINT32              _STOU32 (IN CHAR8 *, IN UINT32);
+  UINT64              _STOU64 (IN CHAR8 *, IN UINT32);
+  EFI_HII_DATE        _STOD   (IN CHAR8 *, IN CHAR8 *, IN CHAR8 *, IN UINT32);
+  EFI_HII_TIME        _STOT   (IN CHAR8 *, IN CHAR8 *, IN CHAR8 *, IN UINT32);
+  EFI_HII_REF         _STOR   (IN CHAR8 *, IN CHAR8 *, IN EFI_GUID *, IN CHAR8 *, IN UINT32);
 
-  EFI_STRING_ID       _STOSID (IN CHAR8 *);
-  EFI_FORM_ID         _STOFID (IN CHAR8 *);
-  EFI_QUESTION_ID     _STOQID (IN CHAR8 *);
+  EFI_STRING_ID       _STOSID (IN CHAR8 *, IN UINT32);
+  EFI_FORM_ID         _STOFID (IN CHAR8 *, IN UINT32);
+  EFI_QUESTION_ID     _STOQID (IN CHAR8 *, IN UINT32);
 
   VOID                _STRCAT (IN OUT CHAR8 **, IN CONST CHAR8 *);
 
@@ -4335,18 +4844,21 @@ EfiVfrParser::_U32TOS (
 
 UINT8
 EfiVfrParser::_STOU8 (
-  IN CHAR8*Str
+  IN CHAR8  *Str,
+  IN UINT32 LineNum
   )
 {
   BOOLEAN IsHex;
   UINT8   Value;
   CHAR8   c;
 
+  UINT8 PreviousValue;
+  CHAR8 *OrigString = Str;
+  CHAR8 ErrorMsg[100];
+
   Str = TrimHex (Str, &IsHex);
   for (Value = 0; (c = *Str) != '\0'; Str++) {
-    //
-    // BUG: does not handle overflow here
-    //
+    PreviousValue = Value;
     (IsHex == TRUE) ? (Value <<= 4) : (Value *= 10);
 
     if ((IsHex == TRUE) && (c >= 'a') && (c <= 'f')) {
@@ -4357,6 +4869,10 @@ EfiVfrParser::_STOU8 (
     }
     if (c >= '0' && c <= '9') {
       Value += (c - '0');
+    }
+    if((IsHex && ((Value/16) != PreviousValue)) || (!IsHex && ((Value/10) != PreviousValue))) {
+      sprintf(ErrorMsg, "Overflow: Value %s is too large to store in a UINT8", OrigString);
+      gCVfrErrorHandle.HandleWarning (VFR_WARNING_STRING_TO_UINT_OVERFLOW, LineNum, ErrorMsg);
     }
   }
 
@@ -4365,18 +4881,21 @@ EfiVfrParser::_STOU8 (
 
 UINT16
 EfiVfrParser::_STOU16 (
-  IN CHAR8*Str
+  IN CHAR8  *Str,
+  IN UINT32 LineNum
   )
 {
   BOOLEAN IsHex;
   UINT16  Value;
   CHAR8   c;
 
+  UINT16 PreviousValue;
+  CHAR8 *OrigString = Str;
+  CHAR8 ErrorMsg[100];
+
   Str = TrimHex (Str, &IsHex);
   for (Value = 0; (c = *Str) != '\0'; Str++) {
-    //
-    // BUG: does not handle overflow here
-    //
+    PreviousValue = Value;
     (IsHex == TRUE) ? (Value <<= 4) : (Value *= 10);
 
     if ((IsHex == TRUE) && (c >= 'a') && (c <= 'f')) {
@@ -4387,6 +4906,10 @@ EfiVfrParser::_STOU16 (
     }
     if (c >= '0' && c <= '9') {
       Value += (c - '0');
+    }
+    if((IsHex && ((Value/16) != PreviousValue)) || (!IsHex && ((Value/10) != PreviousValue))) {
+      sprintf(ErrorMsg, "Overflow: Value %s is too large to store in a UINT16", OrigString);
+      gCVfrErrorHandle.HandleWarning (VFR_WARNING_STRING_TO_UINT_OVERFLOW, LineNum, ErrorMsg);
     }
   }
 
@@ -4395,18 +4918,21 @@ EfiVfrParser::_STOU16 (
 
 UINT32
 EfiVfrParser::_STOU32 (
-  IN CHAR8*Str
+  IN CHAR8  *Str,
+  IN UINT32 LineNum
   )
 {
   BOOLEAN IsHex;
   UINT32  Value;
   CHAR8   c;
 
+  UINT32 PreviousValue;
+  CHAR8 *OrigString = Str;
+  CHAR8 ErrorMsg[100];
+
   Str = TrimHex (Str, &IsHex);
   for (Value = 0; (c = *Str) != '\0'; Str++) {
-    //
-    // BUG: does not handle overflow here
-    //
+    PreviousValue = Value;
     (IsHex == TRUE) ? (Value <<= 4) : (Value *= 10);
 
     if ((IsHex == TRUE) && (c >= 'a') && (c <= 'f')) {
@@ -4417,6 +4943,10 @@ EfiVfrParser::_STOU32 (
     }
     if (c >= '0' && c <= '9') {
       Value += (c - '0');
+    }
+    if((IsHex && ((Value/16) != PreviousValue)) || (!IsHex && ((Value/10) != PreviousValue ))) {
+      sprintf(ErrorMsg, "Overflow: Value %s is too large to store in a UINT32", OrigString);
+      gCVfrErrorHandle.HandleWarning (VFR_WARNING_STRING_TO_UINT_OVERFLOW, LineNum, ErrorMsg);
     }
   }
 
@@ -4425,18 +4955,20 @@ EfiVfrParser::_STOU32 (
 
 UINT64
 EfiVfrParser::_STOU64 (
-  IN CHAR8*Str
+  IN CHAR8  *Str,
+  IN UINT32 LineNum
   )
 {
   BOOLEAN IsHex;
   UINT64  Value;
   CHAR8   c;
+  UINT64 PreviousValue;
+  CHAR8 *OrigString = Str;
+  CHAR8 ErrorMsg[100];
 
   Str = TrimHex (Str, &IsHex);
   for (Value = 0; (c = *Str) != '\0'; Str++) {
-    //
-    // BUG: does not handle overflow here
-    //
+    PreviousValue = Value;
     (IsHex == TRUE) ? (Value <<= 4) : (Value *= 10);
 
     if ((IsHex == TRUE) && (c >= 'a') && (c <= 'f')) {
@@ -4447,6 +4979,10 @@ EfiVfrParser::_STOU64 (
     }
     if (c >= '0' && c <= '9') {
       Value += (c - '0');
+    }
+    if((IsHex && ((Value/16) != PreviousValue)) || ((!IsHex && (Value/10) != PreviousValue))) {
+      sprintf(ErrorMsg, "Overflow: Value %s is too large to store in a UINT64", OrigString);
+      gCVfrErrorHandle.HandleWarning (VFR_WARNING_STRING_TO_UINT_OVERFLOW, LineNum, ErrorMsg);
     }
   }
 
@@ -4457,14 +4993,15 @@ EFI_HII_DATE
 EfiVfrParser::_STOD (
   IN CHAR8 *Year,
   IN CHAR8 *Month,
-  IN CHAR8 *Day
+  IN CHAR8 *Day,
+  IN UINT32 LineNum
   )
 {
   EFI_HII_DATE Date;
 
-  Date.Year  = _STOU16 (Year);
-  Date.Month = _STOU8 (Month);
-  Date.Day   = _STOU8 (Day);
+  Date.Year  = _STOU16 (Year, LineNum);
+  Date.Month = _STOU8 (Month, LineNum);
+  Date.Day   = _STOU8 (Day, LineNum);
 
   return Date;
 }
@@ -4473,40 +5010,44 @@ EFI_HII_TIME
 EfiVfrParser::_STOT (
   IN CHAR8 *Hour,
   IN CHAR8 *Minute,
-  IN CHAR8 *Second
+  IN CHAR8 *Second,
+  IN UINT32 LineNum
   )
 {
   EFI_HII_TIME Time;
 
-  Time.Hour   = _STOU8 (Hour);
-  Time.Minute = _STOU8 (Minute);
-  Time.Second = _STOU8 (Second);
+  Time.Hour   = _STOU8 (Hour, LineNum);
+  Time.Minute = _STOU8 (Minute, LineNum);
+  Time.Second = _STOU8 (Second, LineNum);
 
   return Time;
 }
 
 EFI_STRING_ID
 EfiVfrParser::_STOSID (
-  IN CHAR8 *Str
+  IN CHAR8  *Str,
+  IN UINT32 LineNum
   )
 {
-  return (EFI_STRING_ID)_STOU16(Str);
+  return (EFI_STRING_ID)_STOU16(Str, LineNum);
 }
 
 EFI_FORM_ID
 EfiVfrParser::_STOFID (
-  IN CHAR8 *Str
+  IN CHAR8 *Str,
+  IN UINT32 LineNum
   )
 {
-  return (EFI_FORM_ID)_STOU16(Str);
+  return (EFI_FORM_ID)_STOU16(Str, LineNum);
 }
 
 EFI_QUESTION_ID
 EfiVfrParser::_STOQID (
-  IN CHAR8 *Str
+  IN CHAR8 *Str,
+  IN UINT32 LineNum
   )
 {
-  return (EFI_QUESTION_ID)_STOU16(Str);
+  return (EFI_QUESTION_ID)_STOU16(Str, LineNum);
 }
 
 VOID
@@ -4542,16 +5083,17 @@ EfiVfrParser::_STOR (
   IN CHAR8    *QuestionId,
   IN CHAR8    *FormId,
   IN EFI_GUID *FormSetGuid,
-  IN CHAR8    *DevicePath
+  IN CHAR8    *DevicePath,
+  IN UINT32   LineNum
   )
 {
   EFI_HII_REF Ref;
   UINT32      Index;
 
   memcpy (&Ref.FormSetGuid, FormSetGuid, sizeof (EFI_GUID));
-  Ref.QuestionId  = _STOQID (QuestionId);
-  Ref.FormId      = _STOFID (FormId);
-  Ref.DevicePath  = _STOSID (DevicePath);
+  Ref.QuestionId  = _STOQID (QuestionId, LineNum);
+  Ref.FormId      = _STOFID (FormId, LineNum);
+  Ref.DevicePath  = _STOSID (DevicePath, LineNum);
 
   return Ref;
 }
@@ -4755,7 +5297,7 @@ EfiVfrParser::AssignQuestionKey (
     return;
   }
 
-  KeyValue = _STOU16 (KeyTok->getText());
+  KeyValue = _STOU16 (KeyTok->getText(), KeyTok->getLine());
 
   if (QHObj.FLAGS () & EFI_IFR_FLAG_CALLBACK) {
     /*

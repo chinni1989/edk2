@@ -1,7 +1,8 @@
 /** @file
   Dhcp6 internal functions implementation.
 
-  Copyright (c) 2009 - 2013, Intel Corporation. All rights reserved.<BR>
+  (C) Copyright 2014 Hewlett-Packard Development Company, L.P.<BR>
+  Copyright (c) 2009 - 2015, Intel Corporation. All rights reserved.<BR>
 
   This program and the accompanying materials
   are licensed and made available under the terms and conditions of the BSD License
@@ -363,6 +364,32 @@ Dhcp6CleanupRetry (
   }
 }
 
+/**
+  Check whether the TxCb is still a valid control block in the instance's retry list.
+
+  @param[in]  Instance       The pointer to DHCP6_INSTANCE.
+  @param[in]  TxCb           The control block for a transmitted message.
+
+  @retval   TRUE      The control block is in Instance's retry list.
+  @retval   FALSE     The control block is NOT in Instance's retry list.
+  
+**/
+BOOLEAN
+Dhcp6IsValidTxCb (
+  IN  DHCP6_INSTANCE          *Instance,
+  IN  DHCP6_TX_CB             *TxCb
+  )
+{
+  LIST_ENTRY                *Entry;
+
+  NET_LIST_FOR_EACH (Entry, &Instance->TxList) {
+    if (TxCb == NET_LIST_USER_STRUCT (Entry, DHCP6_TX_CB, Link)) {
+      return TRUE;
+    }
+  }
+
+  return FALSE;
+}
 
 /**
   Clean up the session of the instance stateful exchange.
@@ -518,7 +545,6 @@ Dhcp6UpdateIaInfo (
   )
 {
   EFI_STATUS                  Status;
-  EFI_DHCP6_STATE             State;
   UINT8                       *Option;
   UINT8                       *IaInnerOpt;
   UINT16                      IaInnerLen;
@@ -539,7 +565,6 @@ Dhcp6UpdateIaInfo (
   //
   // See details in the section-18.1.8 of rfc-3315.
   //
-  State  = Dhcp6Init;
   Option = Dhcp6SeekIaOption (
              Packet->Dhcp6.Option,
              Packet->Length - sizeof (EFI_DHCP6_HEADER),
@@ -2402,14 +2427,12 @@ Dhcp6HandleAdvertiseMsg (
 {
   EFI_STATUS                  Status;
   UINT8                       *Option;
-  UINT16                      StsCode;
   BOOLEAN                     Timeout;
 
   ASSERT(Instance->Config);
   ASSERT(Instance->IaCb.Ia);
 
   Timeout = FALSE;
-  StsCode = Dhcp6StsSuccess;
 
   //
   // If the client does receives a valid reply message that includes a rapid
@@ -2789,6 +2812,7 @@ Dhcp6ReceivePacket (
   LIST_ENTRY                *Next1;
   LIST_ENTRY                *Entry2;
   LIST_ENTRY                *Next2;
+  EFI_STATUS                Status;
 
   ASSERT (Udp6Wrap != NULL);
   ASSERT (Context != NULL);
@@ -2867,6 +2891,21 @@ Dhcp6ReceivePacket (
   }
 
 ON_CONTINUE:
+
+  if (!IsDispatched) {
+    Status = UdpIoRecvDatagram (
+             Service->UdpIo,
+             Dhcp6ReceivePacket,
+             Service,
+             0
+             );
+    if (EFI_ERROR (Status)) {
+      NET_LIST_FOR_EACH_SAFE (Entry1, Next1, &Service->Child) {
+        Instance = NET_LIST_USER_STRUCT (Entry1, DHCP6_INSTANCE, Link);
+        Dhcp6CleanupRetry (Instance, DHCP6_PACKET_ALL);
+      }
+    }
+  }
 
   NetbufFree (Udp6Wrap);
 
@@ -3097,7 +3136,8 @@ Dhcp6OnTimerTick (
 
  ON_CLOSE:
 
-  if (TxCb->TxPacket != NULL &&
+  if (Dhcp6IsValidTxCb (Instance, TxCb) &&
+      TxCb->TxPacket != NULL &&
       (TxCb->TxPacket->Dhcp6.Header.MessageType == Dhcp6MsgInfoRequest ||
       TxCb->TxPacket->Dhcp6.Header.MessageType == Dhcp6MsgRenew       ||
       TxCb->TxPacket->Dhcp6.Header.MessageType == Dhcp6MsgConfirm)

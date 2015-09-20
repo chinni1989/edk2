@@ -1,7 +1,7 @@
 /** @file
   SEC Core Debug Agent Library instance implementition.
 
-  Copyright (c) 2010 - 2013, Intel Corporation. All rights reserved.<BR>
+  Copyright (c) 2010 - 2015, Intel Corporation. All rights reserved.<BR>
   This program and the accompanying materials
   are licensed and made available under the terms and conditions of the BSD License
   which accompanies this distribution.  The full text of the license may be found at
@@ -14,17 +14,17 @@
 
 #include "SecPeiDebugAgentLib.h"
 
-BOOLEAN  mSkipBreakpoint = FALSE;
+GLOBAL_REMOVE_IF_UNREFERENCED BOOLEAN  mSkipBreakpoint = FALSE;
 
 
-EFI_PEI_VECTOR_HANDOFF_INFO_PPI mVectorHandoffInfoPpi = {
+GLOBAL_REMOVE_IF_UNREFERENCED EFI_PEI_VECTOR_HANDOFF_INFO_PPI mVectorHandoffInfoPpi = {
   &mVectorHandoffInfoDebugAgent[0]
 };
 
 //
 // Ppis to be installed
 //
-EFI_PEI_PPI_DESCRIPTOR           mVectorHandoffInfoPpiList[] = { 
+GLOBAL_REMOVE_IF_UNREFERENCED EFI_PEI_PPI_DESCRIPTOR           mVectorHandoffInfoPpiList[] = {
   {
     (EFI_PEI_PPI_DESCRIPTOR_PPI | EFI_PEI_PPI_DESCRIPTOR_TERMINATE_LIST),
     &gEfiVectorHandoffInfoPpiGuid,
@@ -32,7 +32,7 @@ EFI_PEI_PPI_DESCRIPTOR           mVectorHandoffInfoPpiList[] = {
   }
 };
 
-EFI_PEI_NOTIFY_DESCRIPTOR mMemoryDiscoveredNotifyList[1] = {
+GLOBAL_REMOVE_IF_UNREFERENCED EFI_PEI_NOTIFY_DESCRIPTOR mMemoryDiscoveredNotifyList[1] = {
   {
     (EFI_PEI_PPI_DESCRIPTOR_NOTIFY_CALLBACK | EFI_PEI_PPI_DESCRIPTOR_TERMINATE_LIST),
     &gEfiPeiMemoryDiscoveredPpiGuid,
@@ -93,12 +93,12 @@ DebugReadBreakSymbol (
     //
     // Try to read the start symbol
     //
-    DebugPortReadBuffer (Handle, Data8, 1, 0);
+    DebugAgentReadBuffer (Handle, Data8, 1, 0);
     if (*Data8 == DEBUG_STARTING_SYMBOL_ATTACH) {
       *BreakSymbol = *Data8;
       DebugAgentMsgPrint (DEBUG_AGENT_INFO, "Debug Timer attach symbol received %x", *BreakSymbol);
       return EFI_SUCCESS;
-    } 
+    }
     if (*Data8 == DEBUG_STARTING_SYMBOL_NORMAL) {
       Status = ReadRemainingBreakPacket (Handle, &DebugHeader);
       if (Status == EFI_SUCCESS) {
@@ -111,7 +111,7 @@ DebugReadBreakSymbol (
       }
     }
   }
-  
+
   return EFI_NOT_FOUND;
 }
 
@@ -183,7 +183,7 @@ GetMailboxPointer (
   UINT64               *MailboxLocationInIdt;
   UINT64               *MailboxLocationInHob;
   DEBUG_AGENT_MAILBOX  *Mailbox;
-  
+
   //
   // Get mailbox from IDT entry firstly
   //
@@ -198,7 +198,7 @@ GetMailboxPointer (
     // If mailbox was setup in SEC or the current CPU arch is different from the init arch
     // Debug Agent initialized, return the mailbox from IDT entry directly.
     // Otherwise, we need to check the mailbox location saved in GUIDed HOB further.
-    // 
+    //
     return Mailbox;
   }
 
@@ -239,7 +239,7 @@ GetDebugPortHandle (
   )
 {
   DEBUG_AGENT_MAILBOX    *DebugAgentMailbox;
-  
+
   DebugAgentMailbox = GetMailboxPointer ();
 
   return (DEBUG_PORT_HANDLE) (UINTN)(DebugAgentMailbox->DebugPortHandle);
@@ -266,7 +266,7 @@ DebugAgentCallbackMemoryDiscoveredPpi (
   EFI_STATUS                     Status;
   DEBUG_AGENT_MAILBOX            *Mailbox;
   BOOLEAN                        InterruptStatus;
-  EFI_PHYSICAL_ADDRESS           Address; 
+  EFI_PHYSICAL_ADDRESS           Address;
   DEBUG_AGENT_MAILBOX            *NewMailbox;
   UINT64                         *MailboxLocationInHob;
 
@@ -320,7 +320,7 @@ DebugAgentCallbackMemoryDiscoveredPpi (
   // Restore interrupt state.
   //
   SetInterruptState (InterruptStatus);
-  
+
   return EFI_SUCCESS;
 }
 
@@ -374,9 +374,14 @@ InitializeDebugAgent (
   UINT64                           DebugPortHandle;
   UINT64                           MailboxLocation;
   UINT64                           *MailboxLocationPointer;
-  EFI_PHYSICAL_ADDRESS             Address; 
-  
-  DisableInterrupts ();
+  EFI_PHYSICAL_ADDRESS             Address;
+  UINT32                           DebugTimerFrequency;
+  BOOLEAN                          CpuInterruptState;
+
+  //
+  // Disable interrupts and save current interrupt state
+  //
+  CpuInterruptState = SaveAndDisableInterrupts();
 
   switch (InitFlag) {
 
@@ -399,8 +404,11 @@ InitializeDebugAgent (
     // Save init arch type when debug agent initialized
     //
     SetDebugFlag (DEBUG_AGENT_FLAG_INIT_ARCH, DEBUG_ARCH_SYMBOL);
-
-    InitializeDebugTimer ();
+    //
+    // Initialize Debug Timer hardware and save its frequency
+    //
+    InitializeDebugTimer (&DebugTimerFrequency, TRUE);
+    UpdateMailboxContent (Mailbox, DEBUG_MAILBOX_DEBUG_TIMER_FREQUENCY, DebugTimerFrequency);
 
     Phase2Context.InitFlag = InitFlag;
     Phase2Context.Context  = Context;
@@ -518,18 +526,26 @@ InitializeDebugAgent (
     // Build mailbox in HOB and setup Mailbox Set In Pei flag
     //
     Mailbox = AllocateZeroPool (sizeof (DEBUG_AGENT_MAILBOX));
-    MailboxLocation = (UINT64)(UINTN)Mailbox;
-    MailboxLocationPointer = BuildGuidDataHob (
-                               &gEfiDebugAgentGuid,
-                               &MailboxLocation,
-                               sizeof (UINT64)
-                               );
-
-    InitializeDebugTimer ();
-    //
-    // Update IDT entry to save the location pointer saved mailbox pointer
-    //
-    SetLocationSavedMailboxPointerInIdtEntry (MailboxLocationPointer);
+    if (Mailbox == NULL) {
+      DEBUG ((EFI_D_ERROR, "DebugAgent: Failed to allocate memory!\n"));
+      CpuDeadLoop ();
+    } else {
+      MailboxLocation = (UINT64)(UINTN)Mailbox;
+      MailboxLocationPointer = BuildGuidDataHob (
+                                 &gEfiDebugAgentGuid,
+                                 &MailboxLocation,
+                                 sizeof (UINT64)
+                                 );
+      //
+      // Initialize Debug Timer hardware and save its frequency
+      //
+      InitializeDebugTimer (&DebugTimerFrequency, TRUE);
+      UpdateMailboxContent (Mailbox, DEBUG_MAILBOX_DEBUG_TIMER_FREQUENCY, DebugTimerFrequency);
+      //
+      // Update IDT entry to save the location pointer saved mailbox pointer
+      //
+      SetLocationSavedMailboxPointerInIdtEntry (MailboxLocationPointer);
+    }
     //
     // Save init arch type when debug agent initialized
     //
@@ -567,7 +583,7 @@ InitializeDebugAgent (
       Ia32Idtr =  (IA32_DESCRIPTOR *) Context;
       Ia32IdtEntry = (IA32_IDT_ENTRY *)(Ia32Idtr->Base);
       MailboxLocationPointer = (UINT64 *) (UINTN) (Ia32IdtEntry[DEBUG_MAILBOX_VECTOR].Bits.OffsetLow +
-                                                (Ia32IdtEntry[DEBUG_MAILBOX_VECTOR].Bits.OffsetHigh << 16));
+                                         (UINT32) (Ia32IdtEntry[DEBUG_MAILBOX_VECTOR].Bits.OffsetHigh << 16));
       Mailbox = (DEBUG_AGENT_MAILBOX *) (UINTN)(*MailboxLocationPointer);
       //
       // Mailbox should valid and setup before executing thunk code
@@ -591,7 +607,7 @@ InitializeDebugAgent (
 
   default:
     //
-    // Only DEBUG_AGENT_INIT_PREMEM_SEC and DEBUG_AGENT_INIT_POSTMEM_SEC are allowed for this 
+    // Only DEBUG_AGENT_INIT_PREMEM_SEC and DEBUG_AGENT_INIT_POSTMEM_SEC are allowed for this
     // Debug Agent library instance.
     //
     DEBUG ((EFI_D_ERROR, "Debug Agent: The InitFlag value is not allowed!\n"));
@@ -599,11 +615,22 @@ InitializeDebugAgent (
     break;
   }
 
-  //
-  // Enable CPU interrupts so debug timer interrupts can be delivered
-  //
-  EnableInterrupts ();
-
+  if (InitFlag == DEBUG_AGENT_INIT_POSTMEM_SEC) {
+    //
+    // Restore CPU Interrupt state and keep debug timer interrupt state as is
+    // in DEBUG_AGENT_INIT_POSTMEM_SEC case
+    //
+    SetInterruptState (CpuInterruptState);
+  } else {
+    //
+    // Enable Debug Timer interrupt
+    //
+    SaveAndSetDebugTimerInterrupt (TRUE);
+    //
+    // Enable CPU interrupts so debug timer interrupts can be delivered
+    //
+    EnableInterrupts ();
+  }
   //
   // If Function is not NULL, invoke it always whatever debug agent was initialized sucesssfully or not.
   //
@@ -645,7 +672,7 @@ InitializeDebugAgentPhase2 (
   MailboxLocation = GetLocationSavedMailboxPointerInIdtEntry ();
   Mailbox = (DEBUG_AGENT_MAILBOX *)(UINTN)(*MailboxLocation);
   BufferSize = PcdGet16(PcdDebugPortHandleBufferSize);
-  if (Phase2Context->InitFlag == DEBUG_AGENT_INIT_PEI) {
+  if (Phase2Context->InitFlag == DEBUG_AGENT_INIT_PEI && BufferSize != 0) {
     NewDebugPortHandle = (UINT64)(UINTN)AllocateCopyPool (BufferSize, DebugPortHandle);
   } else {
     NewDebugPortHandle = (UINT64)(UINTN)DebugPortHandle;
@@ -659,7 +686,7 @@ InitializeDebugAgentPhase2 (
 
   if (Phase2Context->InitFlag == DEBUG_AGENT_INIT_PREMEM_SEC) {
     //
-    // If Temporary RAM region is below 128 MB, then send message to 
+    // If Temporary RAM region is below 128 MB, then send message to
     // host to disable low memory filtering.
     //
     SecCoreData = (EFI_SEC_PEI_HAND_OFF *)Phase2Context->Context;
@@ -667,6 +694,10 @@ InitializeDebugAgentPhase2 (
       SetDebugFlag (DEBUG_AGENT_FLAG_MEMORY_READY, 1);
       TriggerSoftInterrupt (MEMORY_READY_SIGNATURE);
     }
+    //
+    // Enable Debug Timer interrupt
+    //
+    SaveAndSetDebugTimerInterrupt (TRUE);
     //
     // Enable CPU interrupts so debug timer interrupts can be delivered
     //

@@ -1,7 +1,7 @@
 /** @file
   UEFI SCSI Library implementation
 
-  Copyright (c) 2006 - 2011, Intel Corporation. All rights reserved.<BR>
+  Copyright (c) 2006 - 2015, Intel Corporation. All rights reserved.<BR>
   This program and the accompanying materials                          
   are licensed and made available under the terms and conditions of the BSD License         
   which accompanies this distribution.  The full text of the license may be found at        
@@ -23,17 +23,6 @@
   
   
   //
-  // Max bytes needed to represent ID of a SCSI device
-  //
-#define EFI_SCSI_TARGET_MAX_BYTES (0x10)
-  
-  //
-  // bit5..7 are for Logical unit number
-  // 11100000b (0xe0)
-  //
-#define EFI_SCSI_LOGICAL_UNIT_NUMBER_MASK 0xe0
-  
-  //
   // Scsi Command Length
   //
 #define EFI_SCSI_OP_LENGTH_SIX      0x6
@@ -53,6 +42,9 @@
   If HostAdapterStatus is NULL, then ASSERT().
   If TargetStatus is NULL, then ASSERT().
 
+  If SenseDataLength is non-zero and SenseData is not NULL, SenseData must meet buffer
+  alignment requirement defined in EFI_SCSI_IO_PROTOCOL. Otherwise EFI_INVALID_PARAMETER
+  gets returned.
 
   @param[in]     ScsiIo             A pointer to the SCSI I/O Protocol instance
                                     for the specific SCSI target.
@@ -82,27 +74,28 @@
                                     Protocol in the UEFI Specification for details on
                                     the possible return values. 
 
-  @retval EFI_SUCCESS          The command was executed successfully.
-                               See HostAdapterStatus, TargetStatus, SenseDataLength,
-                               and SenseData in that order for additional status
-                               information.
-  @retval EFI_NOT_READY        The SCSI Request Packet could not be sent because
-                               there are too many SCSI Command Packets already
-                               queued. The SCSI Request Packet was not sent, so
-                               no additional status information is available.
-                               The caller may retry again later.
-  @retval EFI_DEVICE_ERROR     A device error occurred while attempting to send
-                               SCSI Request Packet.  See HostAdapterStatus,
-                               TargetStatus, SenseDataLength, and SenseData in that
-                               order for additional status information.
-  @retval EFI_UNSUPPORTED      The command described by the SCSI Request Packet
-                               is not supported by the SCSI initiator(i.e., SCSI
-                               Host Controller). The SCSI Request Packet was not
-                               sent, so no additional status information is available.
-  @retval EFI_TIMEOUT          A timeout occurred while waiting for the SCSI Request
-                               Packet to execute.  See HostAdapterStatus, TargetStatus,
-                               SenseDataLength, and SenseData in that order for
-                               additional status information.
+  @retval EFI_SUCCESS               The command was executed successfully.
+                                    See HostAdapterStatus, TargetStatus, SenseDataLength,
+                                    and SenseData in that order for additional status
+                                    information.
+  @retval EFI_NOT_READY             The SCSI Request Packet could not be sent because
+                                    there are too many SCSI Command Packets already
+                                    queued. The SCSI Request Packet was not sent, so
+                                    no additional status information is available.
+                                    The caller may retry again later.
+  @retval EFI_DEVICE_ERROR          A device error occurred while attempting to send
+                                    SCSI Request Packet.  See HostAdapterStatus,
+                                    TargetStatus, SenseDataLength, and SenseData in that
+                                    order for additional status information.
+  @retval EFI_UNSUPPORTED           The command described by the SCSI Request Packet
+                                    is not supported by the SCSI initiator(i.e., SCSI
+                                    Host Controller). The SCSI Request Packet was not
+                                    sent, so no additional status information is available.
+  @retval EFI_TIMEOUT               A timeout occurred while waiting for the SCSI Request
+                                    Packet to execute.  See HostAdapterStatus, TargetStatus,
+                                    SenseDataLength, and SenseData in that order for
+                                    additional status information.
+  @retval EFI_INVALID_PARAMETER     The contents of the SCSI Request Packet are invalid.
 
 **/
 EFI_STATUS
@@ -117,9 +110,6 @@ ScsiTestUnitReadyCommand (
   )
 {
   EFI_SCSI_IO_SCSI_REQUEST_PACKET CommandPacket;
-  UINT64                          Lun;
-  UINT8                           *Target;
-  UINT8                           TargetArray[EFI_SCSI_TARGET_MAX_BYTES];
   EFI_STATUS                      Status;
   UINT8                           Cdb[EFI_SCSI_OP_LENGTH_SIX];
 
@@ -141,11 +131,7 @@ ScsiTestUnitReadyCommand (
   //
   // Fill Cdb for Test Unit Ready Command
   //
-  Target = &TargetArray[0];
-  ScsiIo->GetDeviceLocation (ScsiIo, &Target, &Lun);
-
   Cdb[0]                        = EFI_SCSI_OP_TEST_UNIT_READY;
-  Cdb[1]                        = (UINT8) (LShiftU64 (Lun, 5) & EFI_SCSI_LOGICAL_UNIT_NUMBER_MASK);
   CommandPacket.CdbLength       = (UINT8) EFI_SCSI_OP_LENGTH_SIX;
   CommandPacket.SenseDataLength = *SenseDataLength;
 
@@ -170,6 +156,14 @@ ScsiTestUnitReadyCommand (
   If HostAdapterStatus is NULL, then ASSERT().
   If TargetStatus is NULL, then ASSERT().
   If InquiryDataLength is NULL, then ASSERT().
+
+  If SenseDataLength is non-zero and SenseData is not NULL, SenseData must meet buffer
+  alignment requirement defined in EFI_SCSI_IO_PROTOCOL. Otherwise EFI_INVALID_PARAMETER
+  gets returned.
+
+  If InquiryDataLength is non-zero and InquiryDataBuffer is not NULL, InquiryDataBuffer
+  must meet buffer alignment requirement defined in EFI_SCSI_IO_PROTOCOL. Otherwise
+  EFI_INVALID_PARAMETER gets returned.
 
   @param[in]      ScsiIo                 A pointer to the SCSI I/O Protocol instance
                                          for the specific SCSI target.
@@ -215,28 +209,29 @@ ScsiTestUnitReadyCommand (
   @param[in]      PageCode               The page code of the vital product data.
                                          It's ignored if EnableVitalProductData is FALSE.
 
-  @retval EFI_SUCCESS          The command executed successfully. See HostAdapterStatus,
-                               TargetStatus, SenseDataLength, and SenseData in that order
-                               for additional status information.
-  @retval EFI_BAD_BUFFER_SIZE  The SCSI Request Packet was executed, but the entire
-                               InquiryDataBuffer could not be transferred. The actual
-                               number of bytes transferred is returned in InquiryDataLength.
-  @retval EFI_NOT_READY        The SCSI Request Packet could not be sent because there
-                               are too many SCSI Command Packets already queued.
-                               The SCSI Request Packet was not sent, so no additional
-                               status information is available. The caller may retry again later.
-  @retval EFI_DEVICE_ERROR     A device error occurred while attempting to send SCSI
-                               Request Packet.  See HostAdapterStatus, TargetStatus,
-                               SenseDataLength, and SenseData in that order for additional
-                               status information.
-  @retval EFI_UNSUPPORTED      The command described by the SCSI Request Packet is not
-                               supported by the SCSI initiator(i.e., SCSI  Host Controller).
-                               The SCSI Request Packet was not sent, so no additional
-                               status information is available.
-  @retval EFI_TIMEOUT          A timeout occurred while waiting for the SCSI Request
-                               Packet to execute.  See HostAdapterStatus, TargetStatus,
-                               SenseDataLength, and SenseData in that order for
-                               additional status information.
+  @retval EFI_SUCCESS                    The command executed successfully. See HostAdapterStatus,
+                                         TargetStatus, SenseDataLength, and SenseData in that order
+                                         for additional status information.
+  @retval EFI_BAD_BUFFER_SIZE            The SCSI Request Packet was executed, but the entire
+                                         InquiryDataBuffer could not be transferred. The actual
+                                         number of bytes transferred is returned in InquiryDataLength.
+  @retval EFI_NOT_READY                  The SCSI Request Packet could not be sent because there
+                                         are too many SCSI Command Packets already queued.
+                                         The SCSI Request Packet was not sent, so no additional
+                                         status information is available. The caller may retry again later.
+  @retval EFI_DEVICE_ERROR               A device error occurred while attempting to send SCSI
+                                         Request Packet.  See HostAdapterStatus, TargetStatus,
+                                         SenseDataLength, and SenseData in that order for additional
+                                         status information.
+  @retval EFI_UNSUPPORTED                The command described by the SCSI Request Packet is not
+                                         supported by the SCSI initiator(i.e., SCSI  Host Controller).
+                                         The SCSI Request Packet was not sent, so no additional
+                                         status information is available.
+  @retval EFI_TIMEOUT                    A timeout occurred while waiting for the SCSI Request
+                                         Packet to execute.  See HostAdapterStatus, TargetStatus,
+                                         SenseDataLength, and SenseData in that order for
+                                         additional status information.
+  @retval EFI_INVALID_PARAMETER          The contents of the SCSI Request Packet are invalid.
 
 **/
 EFI_STATUS
@@ -255,9 +250,6 @@ ScsiInquiryCommandEx (
   )
 {
   EFI_SCSI_IO_SCSI_REQUEST_PACKET CommandPacket;
-  UINT64                          Lun;
-  UINT8                           *Target;
-  UINT8                           TargetArray[EFI_SCSI_TARGET_MAX_BYTES];
   EFI_STATUS                      Status;
   UINT8                           Cdb[EFI_SCSI_OP_LENGTH_SIX];
 
@@ -277,11 +269,7 @@ ScsiInquiryCommandEx (
   CommandPacket.SenseDataLength = *SenseDataLength;
   CommandPacket.Cdb             = Cdb;
 
-  Target = &TargetArray[0];
-  ScsiIo->GetDeviceLocation (ScsiIo, &Target, &Lun);
-
   Cdb[0]  = EFI_SCSI_OP_INQUIRY;
-  Cdb[1]  = (UINT8) (LShiftU64 (Lun, 5) & EFI_SCSI_LOGICAL_UNIT_NUMBER_MASK);
   if (EnableVitalProductData) {
     Cdb[1] |= 0x01;
     Cdb[2]  = PageCode;
@@ -317,6 +305,14 @@ ScsiInquiryCommandEx (
   If HostAdapterStatus is NULL, then ASSERT().
   If TargetStatus is NULL, then ASSERT().
   If InquiryDataLength is NULL, then ASSERT().
+
+  If SenseDataLength is non-zero and SenseData is not NULL, SenseData must meet buffer
+  alignment requirement defined in EFI_SCSI_IO_PROTOCOL. Otherwise EFI_INVALID_PARAMETER
+  gets returned.
+
+  If InquiryDataLength is non-zero and InquiryDataBuffer is not NULL, InquiryDataBuffer
+  must meet buffer alignment requirement defined in EFI_SCSI_IO_PROTOCOL. Otherwise
+  EFI_INVALID_PARAMETER gets returned.
 
   @param[in]      ScsiIo                 A pointer to the SCSI I/O Protocol instance
                                          for the specific SCSI target.
@@ -360,28 +356,29 @@ ScsiInquiryCommandEx (
                                          If FALSE, then the standard inquiry data is
                                          returned in InquiryDataBuffer. 
 
-  @retval EFI_SUCCESS          The command executed successfully. See HostAdapterStatus,
-                               TargetStatus, SenseDataLength, and SenseData in that order
-                               for additional status information.
-  @retval EFI_BAD_BUFFER_SIZE  The SCSI Request Packet was executed, but the entire
-                               InquiryDataBuffer could not be transferred. The actual
-                               number of bytes transferred is returned in InquiryDataLength.
-  @retval EFI_NOT_READY        The SCSI Request Packet could not be sent because there
-                               are too many SCSI Command Packets already queued.
-                               The SCSI Request Packet was not sent, so no additional
-                               status information is available. The caller may retry again later.
-  @retval EFI_DEVICE_ERROR     A device error occurred while attempting to send SCSI
-                               Request Packet.  See HostAdapterStatus, TargetStatus,
-                               SenseDataLength, and SenseData in that order for additional
-                               status information.
-  @retval EFI_UNSUPPORTED      The command described by the SCSI Request Packet is not
-                               supported by the SCSI initiator(i.e., SCSI  Host Controller).
-                               The SCSI Request Packet was not sent, so no additional
-                               status information is available.
-  @retval EFI_TIMEOUT          A timeout occurred while waiting for the SCSI Request
-                               Packet to execute.  See HostAdapterStatus, TargetStatus,
-                               SenseDataLength, and SenseData in that order for
-                               additional status information.
+  @retval EFI_SUCCESS                    The command was executed successfully. See HostAdapterStatus,
+                                         TargetStatus, SenseDataLength, and SenseData in that order
+                                         for additional status information.
+  @retval EFI_BAD_BUFFER_SIZE            The SCSI Request Packet was executed, but the entire
+                                         InquiryDataBuffer could not be transferred. The actual
+                                         number of bytes transferred is returned in InquiryDataLength.
+  @retval EFI_NOT_READY                  The SCSI Request Packet could not be sent because there
+                                         are too many SCSI Command Packets already queued.
+                                         The SCSI Request Packet was not sent, so no additional
+                                         status information is available. The caller may retry again later.
+  @retval EFI_DEVICE_ERROR               A device error occurred while attempting to send SCSI
+                                         Request Packet.  See HostAdapterStatus, TargetStatus,
+                                         SenseDataLength, and SenseData in that order for additional
+                                         status information.
+  @retval EFI_UNSUPPORTED                The command described by the SCSI Request Packet is not
+                                         supported by the SCSI initiator(i.e., SCSI  Host Controller).
+                                         The SCSI Request Packet was not sent, so no additional
+                                         status information is available.
+  @retval EFI_TIMEOUT                    A timeout occurred while waiting for the SCSI Request
+                                         Packet to execute.  See HostAdapterStatus, TargetStatus,
+                                         SenseDataLength, and SenseData in that order for
+                                         additional status information.
+  @retval EFI_INVALID_PARAMETER          The contents of the SCSI Request Packet are invalid.
 
 **/
 EFI_STATUS
@@ -426,6 +423,13 @@ ScsiInquiryCommand (
   If TargetStatus is NULL, then ASSERT().
   If DataLength is NULL, then ASSERT().
 
+  If SenseDataLength is non-zero and SenseData is not NULL, SenseData must meet buffer
+  alignment requirement defined in EFI_SCSI_IO_PROTOCOL. Otherwise EFI_INVALID_PARAMETER
+  gets returned.
+
+  If DataLength is non-zero and DataBuffer is not NULL, DataBuffer must meet buffer
+  alignment requirement defined in EFI_SCSI_IO_PROTOCOL. Otherwise EFI_INVALID_PARAMETER
+  gets returned.
 
   @param[in]      ScsiIo             A pointer to the SCSI I/O Protocol instance
                                      for the specific SCSI target.
@@ -467,30 +471,31 @@ ScsiInquiryCommand (
   @param[in]      PageControl        Specifies the PC field of the CDB for this SCSI Command. 
   @param[in]      PageCode           Specifies the Page Control field of the CDB for this SCSI Command. 
 
-  @retval EFI_SUCCESS               The command executed successfully.
-                                    See HostAdapterStatus, TargetStatus, SenseDataLength,
-                                    and SenseData in that order for additional status information.
-  @retval EFI_BAD_BUFFER_SIZE       The SCSI Request Packet was executed, but the
-                                    entire DataBuffer could not be transferred.
-                                    The actual number of bytes transferred is returned
-                                    in DataLength.
-  @retval EFI_NOT_READY             The SCSI Request Packet could not be sent because
-                                    there are too many SCSI Command Packets already queued.
-                                    The SCSI Request Packet was not sent, so no additional
-                                    status information is available.  The caller may retry
-                                    again later.
-  @retval EFI_DEVICE_ERROR          A device error occurred while attempting to send
-                                    SCSI Request Packet.  See HostAdapterStatus, TargetStatus,
-                                    SenseDataLength, and SenseData in that order for
-                                    additional status information.
-  @retval EFI_UNSUPPORTED           The command described by the SCSI Request Packet
-                                    is not supported by the SCSI initiator(i.e., SCSI
-                                    Host Controller). The SCSI Request Packet was not
-                                    sent, so no additional status information is available.
-  @retval EFI_TIMEOUT               A timeout occurred while waiting for the SCSI
-                                    Request Packet to execute.  See HostAdapterStatus,
-                                    TargetStatus, SenseDataLength, and SenseData in that
-                                    order for additional status information.
+  @retval EFI_SUCCESS                The command was executed successfully.
+                                     See HostAdapterStatus, TargetStatus, SenseDataLength,
+                                     and SenseData in that order for additional status information.
+  @retval EFI_BAD_BUFFER_SIZE        The SCSI Request Packet was executed, but the
+                                     entire DataBuffer could not be transferred.
+                                     The actual number of bytes transferred is returned
+                                     in DataLength.
+  @retval EFI_NOT_READY              The SCSI Request Packet could not be sent because
+                                     there are too many SCSI Command Packets already queued.
+                                     The SCSI Request Packet was not sent, so no additional
+                                     status information is available.  The caller may retry
+                                     again later.
+  @retval EFI_DEVICE_ERROR           A device error occurred while attempting to send
+                                     SCSI Request Packet.  See HostAdapterStatus, TargetStatus,
+                                     SenseDataLength, and SenseData in that order for
+                                     additional status information.
+  @retval EFI_UNSUPPORTED            The command described by the SCSI Request Packet
+                                     is not supported by the SCSI initiator(i.e., SCSI
+                                     Host Controller). The SCSI Request Packet was not
+                                     sent, so no additional status information is available.
+  @retval EFI_TIMEOUT                A timeout occurred while waiting for the SCSI
+                                     Request Packet to execute.  See HostAdapterStatus,
+                                     TargetStatus, SenseDataLength, and SenseData in that
+                                     order for additional status information.
+  @retval EFI_INVALID_PARAMETER      The contents of the SCSI Request Packet are invalid.
 
 **/
 EFI_STATUS
@@ -510,9 +515,6 @@ ScsiModeSense10Command (
   )
 {
   EFI_SCSI_IO_SCSI_REQUEST_PACKET CommandPacket;
-  UINT64                          Lun;
-  UINT8                           *Target;
-  UINT8                           TargetArray[EFI_SCSI_TARGET_MAX_BYTES];
   EFI_STATUS                      Status;
   UINT8                           Cdb[EFI_SCSI_OP_LENGTH_TEN];
 
@@ -533,14 +535,11 @@ ScsiModeSense10Command (
   //
   // Fill Cdb for Mode Sense (10) Command
   //
-  Target = &TargetArray[0];
-  ScsiIo->GetDeviceLocation (ScsiIo, &Target, &Lun);
-
   Cdb[0]                        = EFI_SCSI_OP_MODE_SEN10;
   //
   // DBDField is in Cdb[1] bit3 of (bit7..0)
   //
-  Cdb[1]                        = (UINT8) ((LShiftU64 (Lun, 5) & EFI_SCSI_LOGICAL_UNIT_NUMBER_MASK) + ((DBDField << 3) & 0x08));
+  Cdb[1]                        = (UINT8) ((DBDField << 3) & 0x08);
   //
   // PageControl is in Cdb[2] bit7..6, PageCode is in Cdb[2] bit5..0
   //
@@ -574,6 +573,10 @@ ScsiModeSense10Command (
   If HostAdapterStatus is NULL, then ASSERT().
   If TargetStatus is NULL, then ASSERT().
 
+  If SenseDataLength is non-zero and SenseData is not NULL, SenseData must meet buffer
+  alignment requirement defined in EFI_SCSI_IO_PROTOCOL. Otherwise EFI_INVALID_PARAMETER
+  gets returned.
+
   @param[in]       ScsiIo               A pointer to SCSI IO protocol.
   @param[in]       Timeout              The length of timeout period.
   @param[in, out]  SenseData            A pointer to output sense data.
@@ -581,13 +584,14 @@ ScsiModeSense10Command (
   @param[out]      HostAdapterStatus    The status of Host Adapter.
   @param[out]      TargetStatus         The status of the target.
 
-  @retval EFI_SUCCESS                   The command executed successfully.
+  @retval EFI_SUCCESS                   Command is executed successfully.
   @retval EFI_NOT_READY                 The SCSI Request Packet could not be sent because there are
                                         too many SCSI Command Packets already queued.
   @retval EFI_DEVICE_ERROR              A device error occurred while attempting to send SCSI Request Packet.
   @retval EFI_UNSUPPORTED               The command described by the SCSI Request Packet is not supported by
                                         the SCSI initiator(i.e., SCSI  Host Controller)
   @retval EFI_TIMEOUT                   A timeout occurred while waiting for the SCSI Request Packet to execute.
+  @retval EFI_INVALID_PARAMETER         The contents of the SCSI Request Packet are invalid.
 
 **/
 EFI_STATUS
@@ -602,9 +606,6 @@ ScsiRequestSenseCommand (
   )
 {
   EFI_SCSI_IO_SCSI_REQUEST_PACKET CommandPacket;
-  UINT64                          Lun;
-  UINT8                           *Target;
-  UINT8                           TargetArray[EFI_SCSI_TARGET_MAX_BYTES];
   EFI_STATUS                      Status;
   UINT8                           Cdb[EFI_SCSI_OP_LENGTH_SIX];
 
@@ -624,11 +625,7 @@ ScsiRequestSenseCommand (
   //
   // Fill Cdb for Request Sense Command
   //
-  Target = &TargetArray[0];
-  ScsiIo->GetDeviceLocation (ScsiIo, &Target, &Lun);
-
   Cdb[0]                        = EFI_SCSI_OP_REQUEST_SENSE;
-  Cdb[1]                        = (UINT8) (LShiftU64 (Lun, 5) & EFI_SCSI_LOGICAL_UNIT_NUMBER_MASK);
   Cdb[4]                        = (UINT8) (*SenseDataLength);
 
   CommandPacket.CdbLength       = (UINT8) EFI_SCSI_OP_LENGTH_SIX;
@@ -658,6 +655,14 @@ ScsiRequestSenseCommand (
   If TargetStatus is NULL, then ASSERT().
   If DataLength is NULL, then ASSERT().
 
+  If SenseDataLength is non-zero and SenseData is not NULL, SenseData must meet buffer
+  alignment requirement defined in EFI_SCSI_IO_PROTOCOL. Otherwise EFI_INVALID_PARAMETER
+  gets returned.
+
+  If DataLength is non-zero and DataBuffer is not NULL, DataBuffer must meet buffer
+  alignment requirement defined in EFI_SCSI_IO_PROTOCOL. Otherwise EFI_INVALID_PARAMETER
+  gets returned.
+
   @param[in]      ScsiIo               A pointer to SCSI IO protocol.
   @param[in]      Timeout              The length of timeout period.
   @param[in, out] SenseData            A pointer to output sense data.
@@ -666,18 +671,19 @@ ScsiRequestSenseCommand (
   @param[out]     TargetStatus         The status of the target.
   @param[in, out] DataBuffer           A pointer to a data buffer.
   @param[in, out] DataLength           The length of data buffer.
-  @param[in]      Pmi                  A partial medium indicator.
+  @param[in]      Pmi                  Partial medium indicator.
 
-  @retval  EFI_SUCCESS           The command executed successfully.
-  @retval  EFI_BAD_BUFFER_SIZE   The SCSI Request Packet was executed, but the entire
-                                 DataBuffer could not be transferred. The actual
-                                 number of bytes transferred is returned in DataLength.
-  @retval  EFI_NOT_READY         The SCSI Request Packet could not be sent because
-                                 there are too many SCSI Command Packets already queued.
-  @retval  EFI_DEVICE_ERROR      A device error occurred while attempting to send SCSI Request Packet.
-  @retval  EFI_UNSUPPORTED       The command described by the SCSI Request Packet
-                                 is not supported by the SCSI initiator(i.e., SCSI  Host Controller)
-  @retval  EFI_TIMEOUT           A timeout occurred while waiting for the SCSI Request Packet to execute.
+  @retval  EFI_SUCCESS                 Command is executed successfully.
+  @retval  EFI_BAD_BUFFER_SIZE         The SCSI Request Packet was executed, but the entire
+                                       DataBuffer could not be transferred. The actual
+                                       number of bytes transferred is returned in DataLength.
+  @retval  EFI_NOT_READY               The SCSI Request Packet could not be sent because
+                                       there are too many SCSI Command Packets already queued.
+  @retval  EFI_DEVICE_ERROR            A device error occurred while attempting to send SCSI Request Packet.
+  @retval  EFI_UNSUPPORTED             The command described by the SCSI Request Packet
+                                       is not supported by the SCSI initiator(i.e., SCSI  Host Controller)
+  @retval  EFI_TIMEOUT                 A timeout occurred while waiting for the SCSI Request Packet to execute.
+  @retval  EFI_INVALID_PARAMETER       The contents of the SCSI Request Packet are invalid.
 
 **/
 EFI_STATUS
@@ -695,9 +701,6 @@ ScsiReadCapacityCommand (
   )
 {
   EFI_SCSI_IO_SCSI_REQUEST_PACKET CommandPacket;
-  UINT64                          Lun;
-  UINT8                           *Target;
-  UINT8                           TargetArray[EFI_SCSI_TARGET_MAX_BYTES];
   EFI_STATUS                      Status;
   UINT8                           Cdb[EFI_SCSI_OP_LENGTH_TEN];
 
@@ -718,11 +721,7 @@ ScsiReadCapacityCommand (
   //
   // Fill Cdb for Read Capacity Command
   //
-  Target = &TargetArray[0];
-  ScsiIo->GetDeviceLocation (ScsiIo, &Target, &Lun);
-
   Cdb[0]  = EFI_SCSI_OP_READ_CAPACITY;
-  Cdb[1]  = (UINT8) (LShiftU64 (Lun, 5) & EFI_SCSI_LOGICAL_UNIT_NUMBER_MASK);
   if (!Pmi) {
     //
     // Partial medium indicator,if Pmi is FALSE, the Cdb.2 ~ Cdb.5 MUST BE ZERO.
@@ -760,6 +759,14 @@ ScsiReadCapacityCommand (
   If TargetStatus is NULL, then ASSERT().
   If DataLength is NULL, then ASSERT().
 
+  If SenseDataLength is non-zero and SenseData is not NULL, SenseData must meet buffer
+  alignment requirement defined in EFI_SCSI_IO_PROTOCOL. Otherwise EFI_INVALID_PARAMETER
+  gets returned.
+
+  If DataLength is non-zero and DataBuffer is not NULL, DataBuffer must meet buffer
+  alignment requirement defined in EFI_SCSI_IO_PROTOCOL. Otherwise EFI_INVALID_PARAMETER
+  gets returned.
+
   @param[in]      ScsiIo               A pointer to SCSI IO protocol.
   @param[in]      Timeout              The length of timeout period.
   @param[in, out] SenseData            A pointer to output sense data.
@@ -770,16 +777,17 @@ ScsiReadCapacityCommand (
   @param[in, out] DataLength           The length of data buffer.
   @param[in]      Pmi                  Partial medium indicator.
 
-  @retval  EFI_SUCCESS           The command executed successfully.
-  @retval  EFI_BAD_BUFFER_SIZE   The SCSI Request Packet was executed, but the entire
-                                 DataBuffer could not be transferred. The actual
-                                 number of bytes transferred is returned in DataLength.
-  @retval  EFI_NOT_READY         The SCSI Request Packet could not be sent because
-                                 there are too many SCSI Command Packets already queued.
-  @retval  EFI_DEVICE_ERROR      A device error occurred while attempting to send SCSI Request Packet.
-  @retval  EFI_UNSUPPORTED       The command described by the SCSI Request Packet
-                                 is not supported by the SCSI initiator(i.e., SCSI  Host Controller)
-  @retval  EFI_TIMEOUT           A timeout occurred while waiting for the SCSI Request Packet to execute.
+  @retval  EFI_SUCCESS                 Command is executed successfully.
+  @retval  EFI_BAD_BUFFER_SIZE         The SCSI Request Packet was executed, but the entire
+                                       DataBuffer could not be transferred. The actual
+                                       number of bytes transferred is returned in DataLength.
+  @retval  EFI_NOT_READY               The SCSI Request Packet could not be sent because
+                                       there are too many SCSI Command Packets already queued.
+  @retval  EFI_DEVICE_ERROR            A device error occurred while attempting to send SCSI Request Packet.
+  @retval  EFI_UNSUPPORTED             The command described by the SCSI Request Packet
+                                       is not supported by the SCSI initiator(i.e., SCSI  Host Controller)
+  @retval  EFI_TIMEOUT                 A timeout occurred while waiting for the SCSI Request Packet to execute.
+  @retval  EFI_INVALID_PARAMETER       The contents of the SCSI Request Packet are invalid.
 
 **/
 EFI_STATUS
@@ -797,9 +805,6 @@ ScsiReadCapacity16Command (
   )
 {
   EFI_SCSI_IO_SCSI_REQUEST_PACKET CommandPacket;
-  UINT64                          Lun;
-  UINT8                           *Target;
-  UINT8                           TargetArray[EFI_SCSI_TARGET_MAX_BYTES];
   EFI_STATUS                      Status;
   UINT8                           Cdb[16];
 
@@ -820,9 +825,6 @@ ScsiReadCapacity16Command (
   //
   // Fill Cdb for Read Capacity Command
   //
-  Target = &TargetArray[0];
-  ScsiIo->GetDeviceLocation (ScsiIo, &Target, &Lun);
-
   Cdb[0]  = EFI_SCSI_OP_READ_CAPACITY16;
   Cdb[1]  = 0x10;
   if (!Pmi) {
@@ -864,6 +866,13 @@ ScsiReadCapacity16Command (
   If TargetStatus is NULL, then ASSERT().
   If DataLength is NULL, then ASSERT().
 
+  If SenseDataLength is non-zero and SenseData is not NULL, SenseData must meet buffer
+  alignment requirement defined in EFI_SCSI_IO_PROTOCOL. Otherwise EFI_INVALID_PARAMETER
+  gets returned.
+
+  If DataLength is non-zero and DataBuffer is not NULL, DataBuffer must meet buffer
+  alignment requirement defined in EFI_SCSI_IO_PROTOCOL. Otherwise EFI_INVALID_PARAMETER
+  gets returned.
 
   @param[in]      ScsiIo               A pointer to SCSI IO protocol.
   @param[in]      Timeout              The length of timeout period.
@@ -874,17 +883,18 @@ ScsiReadCapacity16Command (
   @param[in, out] DataBuffer           Read 10 command data.
   @param[in, out] DataLength           The length of data buffer.
   @param[in]      StartLba             The start address of LBA.
-  @param[in]      SectorSize           The sector size.
+  @param[in]      SectorSize           The number of contiguous logical blocks of data that shall be transferred.
 
-  @retval  EFI_SUCCESS          The command is executed successfully.
-  @retval  EFI_BAD_BUFFER_SIZE  The SCSI Request Packet was executed, but the entire DataBuffer could
-                                not be transferred. The actual number of bytes transferred is returned in DataLength.
-  @retval  EFI_NOT_READY        The SCSI Request Packet could not be sent because there are too many 
-                                SCSI Command Packets already queued.
-  @retval  EFI_DEVICE_ERROR     A device error occurred while attempting to send SCSI Request Packet.
-  @retval  EFI_UNSUPPORTED      The command described by the SCSI Request Packet is not supported by 
-                                the SCSI initiator(i.e., SCSI  Host Controller)
-  @retval  EFI_TIMEOUT          A timeout occurred while waiting for the SCSI Request Packet to execute.
+  @retval  EFI_SUCCESS                 Command is executed successfully.
+  @retval  EFI_BAD_BUFFER_SIZE         The SCSI Request Packet was executed, but the entire DataBuffer could
+                                       not be transferred. The actual number of bytes transferred is returned in DataLength.
+  @retval  EFI_NOT_READY               The SCSI Request Packet could not be sent because there are too many
+                                       SCSI Command Packets already queued.
+  @retval  EFI_DEVICE_ERROR            A device error occurred while attempting to send SCSI Request Packet.
+  @retval  EFI_UNSUPPORTED             The command described by the SCSI Request Packet is not supported by
+                                       the SCSI initiator(i.e., SCSI  Host Controller)
+  @retval  EFI_TIMEOUT                 A timeout occurred while waiting for the SCSI Request Packet to execute.
+  @retval  EFI_INVALID_PARAMETER       The contents of the SCSI Request Packet are invalid.
 
 **/
 EFI_STATUS
@@ -903,9 +913,6 @@ ScsiRead10Command (
   )
 {
   EFI_SCSI_IO_SCSI_REQUEST_PACKET CommandPacket;
-  UINT64                          Lun;
-  UINT8                           *Target;
-  UINT8                           TargetArray[EFI_SCSI_TARGET_MAX_BYTES];
   EFI_STATUS                      Status;
   UINT8                           Cdb[EFI_SCSI_OP_LENGTH_TEN];
 
@@ -926,11 +933,7 @@ ScsiRead10Command (
   //
   // Fill Cdb for Read (10) Command
   //
-  Target = &TargetArray[0];
-  ScsiIo->GetDeviceLocation (ScsiIo, &Target, &Lun);
-
   Cdb[0]                        = EFI_SCSI_OP_READ10;
-  Cdb[1]                        = (UINT8) (LShiftU64 (Lun, 5) & EFI_SCSI_LOGICAL_UNIT_NUMBER_MASK);
   WriteUnaligned32 ((UINT32 *)&Cdb[2], SwapBytes32 (StartLba));
   WriteUnaligned16 ((UINT16 *)&Cdb[7], SwapBytes16 ((UINT16) SectorSize));
 
@@ -963,6 +966,14 @@ ScsiRead10Command (
   If TargetStatus is NULL, then ASSERT().
   If DataLength is NULL, then ASSERT().
 
+  If SenseDataLength is non-zero and SenseData is not NULL, SenseData must meet buffer
+  alignment requirement defined in EFI_SCSI_IO_PROTOCOL. Otherwise EFI_INVALID_PARAMETER
+  gets returned.
+
+  If DataLength is non-zero and DataBuffer is not NULL, DataBuffer must meet buffer
+  alignment requirement defined in EFI_SCSI_IO_PROTOCOL. Otherwise EFI_INVALID_PARAMETER
+  gets returned.
+
   @param[in]      ScsiIo               SCSI IO Protocol to use
   @param[in]      Timeout              The length of timeout period.
   @param[in, out] SenseData            A pointer to output sense data.
@@ -972,17 +983,18 @@ ScsiRead10Command (
   @param[in, out] DataBuffer           A pointer to a data buffer.
   @param[in, out] DataLength           The length of data buffer.
   @param[in]      StartLba             The start address of LBA.
-  @param[in]      SectorSize           The sector size.
+  @param[in]      SectorSize           The number of contiguous logical blocks of data that shall be transferred.
 
-  @retval  EFI_SUCCESS          The command executed successfully.
-  @retval  EFI_BAD_BUFFER_SIZE  The SCSI Request Packet was executed, but the entire DataBuffer could
-                                not be transferred. The actual number of bytes transferred is returned in DataLength.
-  @retval  EFI_NOT_READY        The SCSI Request Packet could not be sent because there are too many 
-                                SCSI Command Packets already queued.
-  @retval  EFI_DEVICE_ERROR     A device error occurred while attempting to send SCSI Request Packet.
-  @retval  EFI_UNSUPPORTED      The command described by the SCSI Request Packet is not supported by 
-                                the SCSI initiator(i.e., SCSI  Host Controller)
-  @retval  EFI_TIMEOUT          A timeout occurred while waiting for the SCSI Request Packet to execute.
+  @retval  EFI_SUCCESS                 Command is executed successfully.
+  @retval  EFI_BAD_BUFFER_SIZE         The SCSI Request Packet was executed, but the entire DataBuffer could
+                                       not be transferred. The actual number of bytes transferred is returned in DataLength.
+  @retval  EFI_NOT_READY               The SCSI Request Packet could not be sent because there are too many
+                                       SCSI Command Packets already queued.
+  @retval  EFI_DEVICE_ERROR            A device error occurred while attempting to send SCSI Request Packet.
+  @retval  EFI_UNSUPPORTED             The command described by the SCSI Request Packet is not supported by
+                                       the SCSI initiator(i.e., SCSI  Host Controller)
+  @retval  EFI_TIMEOUT                 A timeout occurred while waiting for the SCSI Request Packet to execute.
+  @retval  EFI_INVALID_PARAMETER       The contents of the SCSI Request Packet are invalid.
 
 **/
 EFI_STATUS
@@ -1001,9 +1013,6 @@ ScsiWrite10Command (
   )
 {
   EFI_SCSI_IO_SCSI_REQUEST_PACKET CommandPacket;
-  UINT64                          Lun;
-  UINT8                           *Target;
-  UINT8                           TargetArray[EFI_SCSI_TARGET_MAX_BYTES];
   EFI_STATUS                      Status;
   UINT8                           Cdb[EFI_SCSI_OP_LENGTH_TEN];
 
@@ -1024,11 +1033,7 @@ ScsiWrite10Command (
   //
   // Fill Cdb for Write (10) Command
   //
-  Target = &TargetArray[0];
-  ScsiIo->GetDeviceLocation (ScsiIo, &Target, &Lun);
-
   Cdb[0]                        = EFI_SCSI_OP_WRITE10;
-  Cdb[1]                        = (UINT8) (LShiftU64 (Lun, 5) & EFI_SCSI_LOGICAL_UNIT_NUMBER_MASK);
   WriteUnaligned32 ((UINT32 *)&Cdb[2], SwapBytes32 (StartLba));
   WriteUnaligned16 ((UINT16 *)&Cdb[7], SwapBytes16 ((UINT16) SectorSize));
 
@@ -1060,6 +1065,13 @@ ScsiWrite10Command (
   If TargetStatus is NULL, then ASSERT().
   If DataLength is NULL, then ASSERT().
 
+  If SenseDataLength is non-zero and SenseData is not NULL, SenseData must meet buffer
+  alignment requirement defined in EFI_SCSI_IO_PROTOCOL. Otherwise EFI_INVALID_PARAMETER
+  gets returned.
+
+  If DataLength is non-zero and DataBuffer is not NULL, DataBuffer must meet buffer
+  alignment requirement defined in EFI_SCSI_IO_PROTOCOL. Otherwise EFI_INVALID_PARAMETER
+  gets returned.
 
   @param[in]      ScsiIo               A pointer to SCSI IO protocol.
   @param[in]      Timeout              The length of timeout period.
@@ -1070,17 +1082,18 @@ ScsiWrite10Command (
   @param[in, out] DataBuffer           Read 16 command data.
   @param[in, out] DataLength           The length of data buffer.
   @param[in]      StartLba             The start address of LBA.
-  @param[in]      SectorSize           The sector size.
+  @param[in]      SectorSize           The number of contiguous logical blocks of data that shall be transferred.
 
-  @retval  EFI_SUCCESS          The command executed successfully.
-  @retval  EFI_BAD_BUFFER_SIZE  The SCSI Request Packet was executed, but the entire DataBuffer could
-                                not be transferred. The actual number of bytes transferred is returned in DataLength.
-  @retval  EFI_NOT_READY        The SCSI Request Packet could not be sent because there are too many 
-                                SCSI Command Packets already queued.
-  @retval  EFI_DEVICE_ERROR     A device error occurred while attempting to send SCSI Request Packet.
-  @retval  EFI_UNSUPPORTED      The command described by the SCSI Request Packet is not supported by 
-                                the SCSI initiator(i.e., SCSI  Host Controller)
-  @retval  EFI_TIMEOUT          A timeout occurred while waiting for the SCSI Request Packet to execute.
+  @retval  EFI_SUCCESS                 Command is executed successfully.
+  @retval  EFI_BAD_BUFFER_SIZE         The SCSI Request Packet was executed, but the entire DataBuffer could
+                                       not be transferred. The actual number of bytes transferred is returned in DataLength.
+  @retval  EFI_NOT_READY               The SCSI Request Packet could not be sent because there are too many
+                                       SCSI Command Packets already queued.
+  @retval  EFI_DEVICE_ERROR            A device error occurred while attempting to send SCSI Request Packet.
+  @retval  EFI_UNSUPPORTED             The command described by the SCSI Request Packet is not supported by
+                                       the SCSI initiator(i.e., SCSI  Host Controller)
+  @retval  EFI_TIMEOUT                 A timeout occurred while waiting for the SCSI Request Packet to execute.
+  @retval  EFI_INVALID_PARAMETER       The contents of the SCSI Request Packet are invalid.
 
 **/
 EFI_STATUS
@@ -1099,9 +1112,6 @@ ScsiRead16Command (
   )
 {
   EFI_SCSI_IO_SCSI_REQUEST_PACKET CommandPacket;
-  UINT64                          Lun;
-  UINT8                           *Target;
-  UINT8                           TargetArray[EFI_SCSI_TARGET_MAX_BYTES];
   EFI_STATUS                      Status;
   UINT8                           Cdb[EFI_SCSI_OP_LENGTH_SIXTEEN];
 
@@ -1122,11 +1132,7 @@ ScsiRead16Command (
   //
   // Fill Cdb for Read (16) Command
   //
-  Target = &TargetArray[0];
-  ScsiIo->GetDeviceLocation (ScsiIo, &Target, &Lun);
-
   Cdb[0]                        = EFI_SCSI_OP_READ16;
-  Cdb[1]                        = (UINT8) (LShiftU64 (Lun, 5) & EFI_SCSI_LOGICAL_UNIT_NUMBER_MASK);
   WriteUnaligned64 ((UINT64 *)&Cdb[2], SwapBytes64 (StartLba));
   WriteUnaligned32 ((UINT32 *)&Cdb[10], SwapBytes32 (SectorSize));
 
@@ -1159,6 +1165,14 @@ ScsiRead16Command (
   If TargetStatus is NULL, then ASSERT().
   If DataLength is NULL, then ASSERT().
 
+  If SenseDataLength is non-zero and SenseData is not NULL, SenseData must meet buffer
+  alignment requirement defined in EFI_SCSI_IO_PROTOCOL. Otherwise EFI_INVALID_PARAMETER
+  gets returned.
+
+  If DataLength is non-zero and DataBuffer is not NULL, DataBuffer must meet buffer
+  alignment requirement defined in EFI_SCSI_IO_PROTOCOL. Otherwise EFI_INVALID_PARAMETER
+  gets returned.
+
   @param[in]      ScsiIo               SCSI IO Protocol to use
   @param[in]      Timeout              The length of timeout period.
   @param[in, out] SenseData            A pointer to output sense data.
@@ -1168,17 +1182,18 @@ ScsiRead16Command (
   @param[in, out] DataBuffer           A pointer to a data buffer.
   @param[in, out] DataLength           The length of data buffer.
   @param[in]      StartLba             The start address of LBA.
-  @param[in]      SectorSize           The sector size.
+  @param[in]      SectorSize           The number of contiguous logical blocks of data that shall be transferred.
 
-  @retval  EFI_SUCCESS          The command is executed successfully.
-  @retval  EFI_BAD_BUFFER_SIZE  The SCSI Request Packet was executed, but the entire DataBuffer could
-                                not be transferred. The actual number of bytes transferred is returned in DataLength.
-  @retval  EFI_NOT_READY        The SCSI Request Packet could not be sent because there are too many 
-                                SCSI Command Packets already queued.
-  @retval  EFI_DEVICE_ERROR     A device error occurred while attempting to send SCSI Request Packet.
-  @retval  EFI_UNSUPPORTED      The command described by the SCSI Request Packet is not supported by 
-                                the SCSI initiator(i.e., SCSI  Host Controller)
-  @retval  EFI_TIMEOUT          A timeout occurred while waiting for the SCSI Request Packet to execute.
+  @retval  EFI_SUCCESS                 Command is executed successfully.
+  @retval  EFI_BAD_BUFFER_SIZE         The SCSI Request Packet was executed, but the entire DataBuffer could
+                                       not be transferred. The actual number of bytes transferred is returned in DataLength.
+  @retval  EFI_NOT_READY               The SCSI Request Packet could not be sent because there are too many
+                                       SCSI Command Packets already queued.
+  @retval  EFI_DEVICE_ERROR            A device error occurred while attempting to send SCSI Request Packet.
+  @retval  EFI_UNSUPPORTED             The command described by the SCSI Request Packet is not supported by
+                                       the SCSI initiator(i.e., SCSI  Host Controller)
+  @retval  EFI_TIMEOUT                 A timeout occurred while waiting for the SCSI Request Packet to execute.
+  @retval  EFI_INVALID_PARAMETER       The contents of the SCSI Request Packet are invalid.
 
 **/
 EFI_STATUS
@@ -1197,9 +1212,6 @@ ScsiWrite16Command (
   )
 {
   EFI_SCSI_IO_SCSI_REQUEST_PACKET CommandPacket;
-  UINT64                          Lun;
-  UINT8                           *Target;
-  UINT8                           TargetArray[EFI_SCSI_TARGET_MAX_BYTES];
   EFI_STATUS                      Status;
   UINT8                           Cdb[EFI_SCSI_OP_LENGTH_SIXTEEN];
 
@@ -1220,11 +1232,7 @@ ScsiWrite16Command (
   //
   // Fill Cdb for Write (16) Command
   //
-  Target = &TargetArray[0];
-  ScsiIo->GetDeviceLocation (ScsiIo, &Target, &Lun);
-
   Cdb[0]                        = EFI_SCSI_OP_WRITE16;
-  Cdb[1]                        = (UINT8) (LShiftU64 (Lun, 5) & EFI_SCSI_LOGICAL_UNIT_NUMBER_MASK);
   WriteUnaligned64 ((UINT64 *)&Cdb[2], SwapBytes64 (StartLba));
   WriteUnaligned32 ((UINT32 *)&Cdb[10], SwapBytes32 (SectorSize));
 

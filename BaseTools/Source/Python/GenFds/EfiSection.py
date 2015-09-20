@@ -1,7 +1,7 @@
 ## @file
 # process rule section generation
 #
-#  Copyright (c) 2007, Intel Corporation. All rights reserved.<BR>
+#  Copyright (c) 2007 - 2014, Intel Corporation. All rights reserved.<BR>
 #
 #  This program and the accompanying materials
 #  are licensed and made available under the terms and conditions of the BSD License
@@ -20,12 +20,13 @@ import Section
 from GenFdsGlobalVariable import GenFdsGlobalVariable
 import subprocess
 from Ffs import Ffs
-import os
+import Common.LongFilePathOs as os
 from CommonDataClass.FdfClass import EfiSectionClassObject
-import shutil
 from Common import EdkLogger
 from Common.BuildToolError import *
 from Common.Misc import PeImageClass
+from Common.LongFilePathSupport import OpenLongFilePath as open
+from Common.LongFilePathSupport import CopyLongFilePath
 
 ## generate rule section
 #
@@ -96,6 +97,7 @@ class EfiSection (EfiSectionClassObject):
                 return FileList, self.Alignment
 
         Index = 0
+        Align = self.Alignment
 
         """ If Section type is 'VERSION'"""
         OutputFileList = []
@@ -210,10 +212,10 @@ class EfiSection (EfiSectionClassObject):
             """If File List is empty"""
             if FileList == [] :
                 if self.Optional == True:
-                     GenFdsGlobalVariable.VerboseLogger( "Optional Section don't exist!")
-                     return [], None
+                    GenFdsGlobalVariable.VerboseLogger("Optional Section don't exist!")
+                    return [], None
                 else:
-                     EdkLogger.error("GenFds", GENFDS_ERROR, "Output file for %s section could not be found for %s" % (SectionType, InfFileName))
+                    EdkLogger.error("GenFds", GENFDS_ERROR, "Output file for %s section could not be found for %s" % (SectionType, InfFileName))
 
             else:
                 """Convert the File to Section file one by one """
@@ -228,23 +230,23 @@ class EfiSection (EfiSectionClassObject):
                     if self.Alignment == 'Auto' and (SectionType == 'PE32' or SectionType == 'TE'):
                         ImageObj = PeImageClass (File)
                         if ImageObj.SectionAlignment < 0x400:
-                            self.Alignment = str (ImageObj.SectionAlignment)
+                            Align = str (ImageObj.SectionAlignment)
                         else:
-                            self.Alignment = str (ImageObj.SectionAlignment / 0x400) + 'K'
+                            Align = str (ImageObj.SectionAlignment / 0x400) + 'K'
 
                     if File[(len(File)-4):] == '.efi':
                         MapFile = File.replace('.efi', '.map')
                         if os.path.exists(MapFile):
                             CopyMapFile = os.path.join(OutputPath, ModuleName + '.map')
                             if not os.path.exists(CopyMapFile) or \
-                                (os.path.getmtime(MapFile) > os.path.getmtime(CopyMapFile)):
-                                shutil.copyfile(MapFile, CopyMapFile)
+                                   (os.path.getmtime(MapFile) > os.path.getmtime(CopyMapFile)):
+                                CopyLongFilePath(MapFile, CopyMapFile)
 
                     if not NoStrip:
                         FileBeforeStrip = os.path.join(OutputPath, ModuleName + '.efi')
                         if not os.path.exists(FileBeforeStrip) or \
                             (os.path.getmtime(File) > os.path.getmtime(FileBeforeStrip)):
-                            shutil.copyfile(File, FileBeforeStrip)
+                            CopyLongFilePath(File, FileBeforeStrip)
                         StrippedFile = os.path.join(OutputPath, ModuleName + '.stripped')
                         GenFdsGlobalVariable.GenerateFirmwareImage(
                                                 StrippedFile,
@@ -271,4 +273,4 @@ class EfiSection (EfiSectionClassObject):
                                                          )
                     OutputFileList.append(OutputFile)
 
-        return OutputFileList, self.Alignment
+        return OutputFileList, Align

@@ -1,6 +1,6 @@
 /** @file
 
-Copyright (c) 2006 - 2013, Intel Corporation. All rights reserved.<BR>
+Copyright (c) 2006 - 2015, Intel Corporation. All rights reserved.<BR>
 
 This program and the accompanying materials
 are licensed and made available under the terms and conditions
@@ -1198,7 +1198,7 @@ PciProgramAllInterruptLineRegisters (
                       &Supports
                       );
     if (!EFI_ERROR (Status)) {
-      Supports &= EFI_PCI_DEVICE_ENABLE;
+      Supports &= (UINT64)EFI_PCI_DEVICE_ENABLE;
       Status = PciIo->Attributes (
                         PciIo,
                         EfiPciIoAttributeOperationEnable,
@@ -1772,7 +1772,7 @@ PciShadowRoms (
                           &Supports
                           );
         if (!EFI_ERROR (Status)) {
-          Supports &= EFI_PCI_DEVICE_ENABLE;
+          Supports &= (UINT64)EFI_PCI_DEVICE_ENABLE;
           Status = PciIo->Attributes (
                             PciIo,
                             EfiPciIoAttributeOperationEnable,
@@ -1879,6 +1879,7 @@ LegacyBiosCheckPciRomEx (
   PCI_TYPE00                      PciConfigHeader;
   VOID                            *LocalConfigUtilityCodeHeader;
 
+  LocalConfigUtilityCodeHeader = NULL;
   *Flags = NO_ROM;
   Status = gBS->HandleProtocol (
                   PciHandle,
@@ -1894,7 +1895,7 @@ LegacyBiosCheckPciRomEx (
   //
   Status = IsLegacyRom (PciHandle);
   if (!EFI_ERROR (Status)) {
-    *Flags |= (ROM_FOUND | VALID_LEGACY_ROM);
+    *Flags |= (UINTN)(ROM_FOUND | VALID_LEGACY_ROM);
     return EFI_SUCCESS;
   }
   //
@@ -2186,8 +2187,8 @@ LegacyBiosInstallVgaRom (
                     &Supports
                     );
   if (!EFI_ERROR (Status)) {
-    Supports &= EFI_PCI_DEVICE_ENABLE | EFI_PCI_IO_ATTRIBUTE_VGA_MEMORY | \
-                EFI_PCI_IO_ATTRIBUTE_VGA_IO | EFI_PCI_IO_ATTRIBUTE_VGA_IO_16;
+    Supports &= (UINT64)(EFI_PCI_DEVICE_ENABLE | EFI_PCI_IO_ATTRIBUTE_VGA_MEMORY | \
+                         EFI_PCI_IO_ATTRIBUTE_VGA_IO | EFI_PCI_IO_ATTRIBUTE_VGA_IO_16);
     Status = PciIo->Attributes (
                       PciIo,
                       EfiPciIoAttributeOperationEnable,
@@ -2283,6 +2284,7 @@ LegacyBiosInstallRom (
   UINT32                LocalTime;
   UINT32                StartBbsIndex;
   UINT32                EndBbsIndex;
+  UINT32                MaxRomAddr;
   UINTN                 TempData;
   UINTN                 InitAddress;
   UINTN                 RuntimeAddress;
@@ -2298,6 +2300,15 @@ LegacyBiosInstallRom (
   Function        = 0;
   VideoMode       = 0;
   PhysicalAddress = 0;
+  MaxRomAddr      = PcdGet32 (PcdEndOpromShadowAddress);
+
+  if ((Private->Legacy16Table->TableLength >= OFFSET_OF(EFI_COMPATIBILITY16_TABLE, HiPermanentMemoryAddress)) &&
+      (Private->Legacy16Table->UmaAddress != 0) && 
+      (Private->Legacy16Table->UmaSize != 0) &&
+      (MaxRomAddr > (Private->Legacy16Table->UmaAddress))) {
+    MaxRomAddr = Private->Legacy16Table->UmaAddress;
+  }
+
 
   PciProgramAllInterruptLineRegisters (Private);
 
@@ -2330,7 +2341,7 @@ LegacyBiosInstallRom (
     //   then test if there is enough space for its RT code
     //
     RuntimeAddress = Private->OptionRom;
-    if (RuntimeAddress + *RuntimeImageLength > PcdGet32 (PcdEndOpromShadowAddress)) {
+    if (RuntimeAddress + *RuntimeImageLength > MaxRomAddr) {
       DEBUG ((EFI_D_ERROR, "return LegacyBiosInstallRom(%d): EFI_OUT_OF_RESOURCES (no more space for OpROM)\n", __LINE__));
       gBS->FreePages (PhysicalAddress, EFI_SIZE_TO_PAGES (ImageSize));
       //
@@ -2348,7 +2359,7 @@ LegacyBiosInstallRom (
     //   test if there is enough space for its INIT code
     //
     InitAddress    = PCI_START_ADDRESS (Private->OptionRom);
-    if (InitAddress + ImageSize > PcdGet32 (PcdEndOpromShadowAddress)) {
+    if (InitAddress + ImageSize > MaxRomAddr) {
       DEBUG ((EFI_D_ERROR, "return LegacyBiosInstallRom(%d): EFI_OUT_OF_RESOURCES (no more space for OpROM)\n", __LINE__));
       //
       // Report Status Code to indicate that there is no enough space for OpROM

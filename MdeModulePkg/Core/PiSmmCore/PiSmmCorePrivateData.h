@@ -2,7 +2,7 @@
   The internal header file that declared a data structure that is shared
   between the SMM IPL and the SMM Core.
 
-  Copyright (c) 2009 - 2011, Intel Corporation. All rights reserved.<BR>
+  Copyright (c) 2009 - 2015, Intel Corporation. All rights reserved.<BR>
   This program and the accompanying materials are licensed and made available 
   under the terms and conditions of the BSD License which accompanies this 
   distribution.  The full text of the license may be found at        
@@ -116,6 +116,10 @@ typedef struct {
   /// a software SMI handler back to the caller of the SMM Communication Protocol.
   ///
   EFI_STATUS                      ReturnStatus;
+
+  EFI_PHYSICAL_ADDRESS            PiSmmCoreImageBase;
+  UINT64                          PiSmmCoreImageSize;
+  EFI_PHYSICAL_ADDRESS            PiSmmCoreEntryPoint;
 } SMM_CORE_PRIVATE_DATA;
 
 #endif

@@ -3,7 +3,7 @@
   Emulation Variable services operate on the runtime volatile memory.
   The nonvolatile variable space doesn't exist.
 
-Copyright (c) 2006 - 2013, Intel Corporation. All rights reserved.<BR>
+Copyright (c) 2006 - 2015, Intel Corporation. All rights reserved.<BR>
 This program and the accompanying materials
 are licensed and made available under the terms and conditions of the BSD License
 which accompanies this distribution.  The full text of the license may be found at
@@ -320,9 +320,9 @@ UpdateVariableInfo (
       ASSERT (gVariableInfo != NULL);
 
       CopyGuid (&gVariableInfo->VendorGuid, VendorGuid);
-      gVariableInfo->Name = AllocatePool (StrSize (VariableName));
+      gVariableInfo->Name = AllocateZeroPool (StrSize (VariableName));
       ASSERT (gVariableInfo->Name != NULL);
-      StrCpy (gVariableInfo->Name, VariableName);
+      StrCpyS (gVariableInfo->Name, StrSize(VariableName)/sizeof(CHAR16), VariableName);
       gVariableInfo->Volatile = Volatile;
 
       gBS->InstallConfigurationTable (&gEfiVariableGuid, gVariableInfo);
@@ -358,9 +358,9 @@ UpdateVariableInfo (
         ASSERT (Entry->Next != NULL);
 
         CopyGuid (&Entry->Next->VendorGuid, VendorGuid);
-        Entry->Next->Name = AllocatePool (StrSize (VariableName));
+        Entry->Next->Name = AllocateZeroPool (StrSize (VariableName));
         ASSERT (Entry->Next->Name != NULL);
-        StrCpy (Entry->Next->Name, VariableName);
+        StrCpyS (Entry->Next->Name, StrSize(VariableName)/sizeof(CHAR16), VariableName);
         Entry->Next->Volatile = Volatile;
       }
 

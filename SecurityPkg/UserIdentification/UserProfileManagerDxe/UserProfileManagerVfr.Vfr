@@ -21,8 +21,6 @@ formset
   guid     = USER_PROFILE_MANAGER_GUID,
   title    = STRING_TOKEN(STR_FORMSET_TITLE),  
   help     = STRING_TOKEN(STR_TITLE_HELP),
-  class    = USER_MANAGER_CLASS,
-  subclass = USER_MANAGER_SUBCLASS,
     
   // User manager form
   form formid = FORMID_USER_MANAGE,
@@ -35,7 +33,6 @@ formset
       text
         help   = STRING_TOKEN(STR_NULL_STRING),
         text   = STRING_TOKEN(STR_NULL_STRING),
-          text   = STRING_TOKEN(STR_NULL_STRING),
         flags  = INTERACTIVE,
         key    = QUESTIONID_USER_MANAGE;
     endif;

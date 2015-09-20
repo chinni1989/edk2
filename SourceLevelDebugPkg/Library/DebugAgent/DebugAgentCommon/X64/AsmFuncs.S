@@ -1,6 +1,6 @@
 #------------------------------------------------------------------------------
 #
-# Copyright (c) 2006 - 2013, Intel Corporation. All rights reserved.<BR>
+# Copyright (c) 2006 - 2014, Intel Corporation. All rights reserved.<BR>
 # This program and the accompanying materials
 # are licensed and made available under the terms and conditions of the BSD License
 # which accompanies this distribution.  The full text of the license may be found at
@@ -34,7 +34,7 @@ ASM_GLOBAL ASM_PFX(CommonEntry)
 
 .data
 
-ASM_PFX(ExceptionStubHeaderSize):  .word     ASM_PFX(Exception1Handle) - ASM_PFX(Exception0Handle)
+ASM_PFX(ExceptionStubHeaderSize):  .long     ASM_PFX(Exception1Handle) - ASM_PFX(Exception0Handle)
 
 
 .text
@@ -271,13 +271,13 @@ NoExtrPush:
   movzwq   32(%rbp), %rax
 #  movq     %cs, %rax
   pushq    %rax
-  movq     %ds, %rax
+  mov      %ds, %rax
   pushq    %rax
-  movq     %es, %rax
+  mov      %es, %rax
   pushq    %rax
-  movq     %fs, %rax
+  mov      %fs, %rax
   pushq    %rax
-  movq     %gs, %rax
+  mov      %gs, %rax
   pushq    %rax
 
 ## UINT64  Rip;
@@ -385,9 +385,9 @@ NoExtrPush:
   # mov     fs, rax ; not for fs
   # (X64 will not use fs and gs, so we do not restore it)
    popq     %rax
-  movw    %rax, %es
+   mov      %rax, %es
    popq     %rax
-  movw    %rax, %ds
+   mov      %rax, %ds
    popq     32(%rbp)
    popq     56(%rbp)
 

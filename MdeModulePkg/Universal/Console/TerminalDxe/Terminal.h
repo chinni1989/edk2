@@ -1,7 +1,7 @@
 /** @file
   Header file for Terminal driver.
 
-Copyright (c) 2006 - 2012, Intel Corporation. All rights reserved.<BR>
+Copyright (c) 2006 - 2014, Intel Corporation. All rights reserved.<BR>
 This program and the accompanying materials
 are licensed and made available under the terms and conditions of the BSD License
 which accompanies this distribution.  The full text of the license may be found at
@@ -20,6 +20,8 @@ WITHOUT WARRANTIES OR REPRESENTATIONS OF ANY KIND, EITHER EXPRESS OR IMPLIED.
 
 #include <Guid/GlobalVariable.h>
 #include <Guid/PcAnsi.h>
+#include <Guid/TtyTerm.h>
+#include <Guid/StatusCodeDataTypeVariable.h>
 
 #include <Protocol/SimpleTextOut.h>
 #include <Protocol/SerialIo.h>
@@ -97,6 +99,8 @@ typedef struct {
   EFI_EVENT                           TwoSecondTimeOut;
   UINT32                              InputState;
   UINT32                              ResetState;
+  UINT16                              TtyEscapeStr[3];
+  INTN                                TtyEscapeIndex;
 
   //
   // Esc could not be output to the screen by user,
@@ -116,6 +120,7 @@ typedef struct {
 #define INPUT_STATE_LEFTOPENBRACKET       0x04
 #define INPUT_STATE_O                     0x08
 #define INPUT_STATE_2                     0x10
+#define INPUT_STATE_LEFTOPENBRACKET_2     0x20
 
 #define RESET_STATE_DEFAULT               0x00
 #define RESET_STATE_ESC_R                 0x01
@@ -135,6 +140,7 @@ typedef union {
 #define VT100TYPE                 1
 #define VT100PLUSTYPE             2
 #define VTUTF8TYPE                3
+#define TTYTERMTYPE               4
 
 #define LEFTOPENBRACKET           0x5b  // '['
 #define ACAP                      0x41
@@ -233,7 +239,7 @@ TerminalConInReadKeyStroke (
                                    pressed.
 
   @retval TRUE                     Key be pressed matches a registered key.
-  @retval FLASE                    Match failed.
+  @retval FALSE                    Match failed.
 
 **/
 BOOLEAN
@@ -879,7 +885,7 @@ GetOneKeyFromSerial (
   @param  Input                The key will be input.
 
   @retval TRUE                 If insert successfully.
-  @retval FLASE                If Raw Data buffer is full before key insertion,
+  @retval FALSE                If Raw Data buffer is full before key insertion,
                                and the key is lost.
 
 **/
@@ -896,7 +902,7 @@ RawFiFoInsertOneKey (
   @param  Output               The key will be removed.
 
   @retval TRUE                 If insert successfully.
-  @retval FLASE                If Raw Data FIFO buffer is empty before remove operation.
+  @retval FALSE                If Raw Data FIFO buffer is empty before remove operation.
 
 **/
 BOOLEAN
@@ -911,7 +917,7 @@ RawFiFoRemoveOneKey (
   @param  TerminalDevice       Terminal driver private structure
 
   @retval TRUE                 If Raw Data FIFO buffer is empty.
-  @retval FLASE                If Raw Data FIFO buffer is not empty.
+  @retval FALSE                If Raw Data FIFO buffer is not empty.
 
 **/
 BOOLEAN
@@ -925,7 +931,7 @@ IsRawFiFoEmpty (
   @param  TerminalDevice       Terminal driver private structure
 
   @retval TRUE                 If Raw Data FIFO buffer is full.
-  @retval FLASE                If Raw Data FIFO buffer is not full.
+  @retval FALSE                If Raw Data FIFO buffer is not full.
 
 **/
 BOOLEAN
@@ -940,7 +946,7 @@ IsRawFiFoFull (
   @param  Key                  The key will be input.
 
   @retval TRUE                 If insert successfully.
-  @retval FLASE                If FIFO buffer is full before key insertion,
+  @retval FALSE                If FIFO buffer is full before key insertion,
                                and the key is lost.
 
 **/
@@ -957,7 +963,7 @@ EfiKeyFiFoInsertOneKey (
   @param  Output               The key will be removed.
 
   @retval TRUE                 If insert successfully.
-  @retval FLASE                If FIFO buffer is empty before remove operation.
+  @retval FALSE                If FIFO buffer is empty before remove operation.
 
 **/
 BOOLEAN
@@ -972,7 +978,7 @@ EfiKeyFiFoRemoveOneKey (
   @param  TerminalDevice       Terminal driver private structure
 
   @retval TRUE                 If FIFO buffer is empty.
-  @retval FLASE                If FIFO buffer is not empty.
+  @retval FALSE                If FIFO buffer is not empty.
 
 **/
 BOOLEAN
@@ -986,7 +992,7 @@ IsEfiKeyFiFoEmpty (
   @param  TerminalDevice       Terminal driver private structure
 
   @retval TRUE                 If FIFO buffer is full.
-  @retval FLASE                If FIFO buffer is not full.
+  @retval FALSE                If FIFO buffer is not full.
 
 **/
 BOOLEAN
@@ -1001,7 +1007,7 @@ IsEfiKeyFiFoFull (
   @param  Input                The key will be input.
 
   @retval TRUE                 If insert successfully.
-  @retval FLASE                If Unicode FIFO buffer is full before key insertion,
+  @retval FALSE                If Unicode FIFO buffer is full before key insertion,
                                and the key is lost.
 
 **/
@@ -1013,15 +1019,14 @@ UnicodeFiFoInsertOneKey (
 
 /**
   Remove one pre-fetched key out of the Unicode FIFO buffer.
+  The caller should guarantee that Unicode FIFO buffer is not empty 
+  by IsUnicodeFiFoEmpty ().
 
   @param  TerminalDevice       Terminal driver private structure.
   @param  Output               The key will be removed.
 
-  @retval TRUE                 If insert successfully.
-  @retval FLASE                If Unicode FIFO buffer is empty before remove operation.
-
 **/
-BOOLEAN
+VOID
 UnicodeFiFoRemoveOneKey (
   TERMINAL_DEV  *TerminalDevice,
   UINT16        *Output
@@ -1033,7 +1038,7 @@ UnicodeFiFoRemoveOneKey (
   @param  TerminalDevice       Terminal driver private structure
 
   @retval TRUE                 If Unicode FIFO buffer is empty.
-  @retval FLASE                If Unicode FIFO buffer is not empty.
+  @retval FALSE                If Unicode FIFO buffer is not empty.
 
 **/
 BOOLEAN
@@ -1047,7 +1052,7 @@ IsUnicodeFiFoEmpty (
   @param  TerminalDevice       Terminal driver private structure
 
   @retval TRUE                 If Unicode FIFO buffer is full.
-  @retval FLASE                If Unicode FIFO buffer is not full.
+  @retval FALSE                If Unicode FIFO buffer is not full.
 
 **/
 BOOLEAN

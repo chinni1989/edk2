@@ -25,6 +25,7 @@
 #include <Library/BaseLib.h>
 #include <Library/BaseMemoryLib.h>
 #include <Library/UefiBootServicesTableLib.h>
+#include <Library/MemoryAllocationLib.h>
 
 
 /**
@@ -40,17 +41,14 @@ GetXenSmbiosTables (
 
 
 /**
-  Validates the SMBIOS entry point structure
+  Locates and extracts the QEMU SMBIOS table data if present in fw_cfg
 
-  @param  EntryPointStructure  SMBIOS entry point structure
-
-  @retval TRUE   The entry point structure is valid
-  @retval FALSE  The entry point structure is not valid
+  @return             Address of extracted QEMU SMBIOS data
 
 **/
-BOOLEAN
-IsEntryPointStructureValid (
-  IN SMBIOS_TABLE_ENTRY_POINT  *EntryPointStructure
+UINT8 *
+GetQemuSmbiosTables (
+  VOID
   );
 
 #endif

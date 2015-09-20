@@ -1,7 +1,7 @@
 ## @file
 #  Platform BDS customizations library.
 #
-#  Copyright (c) 2007 - 2010, Intel Corporation. All rights reserved.<BR>
+#  Copyright (c) 2007 - 2015, Intel Corporation. All rights reserved.<BR>
 #  This program and the accompanying materials
 #  are licensed and made available under the terms and conditions of the BSD License
 #  which accompanies this distribution.  The full text of the license may be found at
@@ -29,10 +29,8 @@
 [Sources]
   BdsPlatform.c
   PlatformData.c
-  QemuBootOrder.c
   QemuKernel.c
   BdsPlatform.h
-  QemuBootOrder.h
 
 [Packages]
   MdePkg/MdePkg.dec
@@ -52,16 +50,23 @@
   NvVarsFileLib
   QemuFwCfgLib
   LoadLinuxLib
+  QemuBootOrderLib
+  UefiLib
 
 [Pcd]
-  gEfiIntelFrameworkModulePkgTokenSpaceGuid.PcdPlatformBootTimeOut
   gEfiIntelFrameworkModulePkgTokenSpaceGuid.PcdLogoFile
   gUefiOvmfPkgTokenSpaceGuid.PcdEmuVariableEvent
   gUefiOvmfPkgTokenSpaceGuid.PcdOvmfFlashVariablesEnable
+  gUefiOvmfPkgTokenSpaceGuid.PcdOvmfHostBridgePciDevId
 
 [Pcd.IA32, Pcd.X64]
   gEfiMdePkgTokenSpaceGuid.PcdFSBClock
 
 [Protocols]
   gEfiDecompressProtocolGuid
+  gEfiPciRootBridgeIoProtocolGuid
+  gEfiS3SaveStateProtocolGuid                   # PROTOCOL SOMETIMES_CONSUMED
+  gEfiDxeSmmReadyToLockProtocolGuid             # PROTOCOL SOMETIMES_PRODUCED
 
+[Guids]
+  gEfiEndOfDxeEventGroupGuid

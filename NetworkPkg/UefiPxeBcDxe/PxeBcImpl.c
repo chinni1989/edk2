@@ -1,7 +1,7 @@
 /** @file
   This implementation of EFI_PXE_BASE_CODE_PROTOCOL and EFI_LOAD_FILE_PROTOCOL.
 
-  Copyright (c) 2007 - 2014, Intel Corporation. All rights reserved.<BR>
+  Copyright (c) 2007 - 2015, Intel Corporation. All rights reserved.<BR>
 
   This program and the accompanying materials
   are licensed and made available under the terms and conditions of the BSD License
@@ -124,6 +124,14 @@ EfiPxeBcStart (
     if (EFI_ERROR (Status)) {
       goto ON_ERROR;
     }
+
+    //
+    // Set Ip6 policy to Automatic to start the IP6 router discovery.
+    //
+    Status = PxeBcSetIp6Policy (Private);
+    if (EFI_ERROR (Status)) {
+      goto ON_ERROR;
+    }
   } else {
     AsciiPrint ("\n>>Start PXE over IPv4");
     //
@@ -193,6 +201,18 @@ EfiPxeBcStart (
                     Private,
                     &Private->IcmpToken.Event
                     );
+    if (EFI_ERROR (Status)) {
+      goto ON_ERROR;
+    }
+
+    //
+    //DHCP4 service allows only one of its children to be configured in  
+    //the active state, If the DHCP4 D.O.R.A started by IP4 auto  
+    //configuration and has not been completed, the Dhcp4 state machine 
+    //will not be in the right state for the PXE to start a new round D.O.R.A. 
+    //so we need to switch it's policy to static.
+    //
+    Status = PxeBcSetIp4Policy (Private);
     if (EFI_ERROR (Status)) {
       goto ON_ERROR;
     }
@@ -338,6 +358,7 @@ EfiPxeBcStop (
       gBS->CloseEvent (Private->IcmpToken.Event);
       Private->IcmpToken.Event = NULL;
     }
+    Private->BootFileName = NULL;
   }
 
   gBS->CloseEvent (Private->UdpTimeOutEvent);
@@ -600,6 +621,7 @@ EfiPxeBcDiscover (
     if (EFI_ERROR (Status)) {
       goto ON_EXIT;
     }
+    ASSERT (NewCreatedInfo != NULL);
     Info = NewCreatedInfo;
   } else {
     //
@@ -1255,7 +1277,7 @@ EfiPxeBcUdpRead (
   UINTN                       FragmentIndex;
   UINT8                       *FragmentBuffer;
 
-  if (This == NULL || DestIp == NULL || DestPort == NULL) {
+  if (This == NULL) {
     return EFI_INVALID_PARAMETER;
   }
 
@@ -1266,9 +1288,9 @@ EfiPxeBcUdpRead (
   Udp4Rx    = NULL;
   Udp6Rx    = NULL;
 
-  if (((OpFlags & EFI_PXE_BASE_CODE_UDP_OPFLAGS_ANY_DEST_PORT) != 0 && DestPort == NULL) ||
-      ((OpFlags & EFI_PXE_BASE_CODE_UDP_OPFLAGS_ANY_SRC_IP) != 0 && SrcIp == NULL) ||
-      ((OpFlags & EFI_PXE_BASE_CODE_UDP_OPFLAGS_ANY_SRC_PORT) != 0 && SrcPort == NULL)) {
+  if (((OpFlags & EFI_PXE_BASE_CODE_UDP_OPFLAGS_ANY_DEST_PORT) == 0 && DestPort == NULL) ||
+      ((OpFlags & EFI_PXE_BASE_CODE_UDP_OPFLAGS_ANY_SRC_IP) == 0 && SrcIp == NULL) ||
+      ((OpFlags & EFI_PXE_BASE_CODE_UDP_OPFLAGS_ANY_SRC_PORT) == 0 && SrcPort == NULL)) {
     return EFI_INVALID_PARAMETER;
   }
 
@@ -2024,7 +2046,7 @@ EfiPxeBcSetStationIP (
     CopyMem (&Private->SubnetMask ,NewSubnetMask, sizeof (EFI_IP_ADDRESS));
   }
 
-  Status = PxeBcFlushStaionIp (Private, NewStationIp, NewSubnetMask);
+  Status = PxeBcFlushStationIp (Private, NewStationIp, NewSubnetMask);
 ON_EXIT:
   return Status;
 }
@@ -2306,6 +2328,10 @@ EfiPxeLoadFile (
   EFI_STATUS                  Status;
   BOOLEAN                     MediaPresent;
 
+  if (FilePath == NULL || !IsDevicePathEnd (FilePath)) {
+    return EFI_INVALID_PARAMETER;
+  }
+  
   VirtualNic = PXEBC_VIRTUAL_NIC_FROM_LOADFILE (This);
   Private    = VirtualNic->Private;
   PxeBc      = &Private->PxeBc;

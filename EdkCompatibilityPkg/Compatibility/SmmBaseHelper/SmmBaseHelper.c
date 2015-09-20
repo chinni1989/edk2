@@ -11,7 +11,7 @@
 
   SmmHandlerEntry() will receive untrusted input and do validation.
 
-  Copyright (c) 2009 - 2013, Intel Corporation. All rights reserved.<BR>
+  Copyright (c) 2009 - 2015, Intel Corporation. All rights reserved.<BR>
   This program and the accompanying materials
   are licensed and made available under the terms and conditions of the BSD License
   which accompanies this distribution.  The full text of the license may be found at
@@ -43,6 +43,42 @@
 #include <Protocol/LoadPe32Image.h>
 #include <Protocol/SmmReadyToLock.h>
 #include <Protocol/SmmAccess2.h>
+
+/**
+  Register SMM image to SMRAM profile.
+
+  @param[in] FilePath           File path of the image.
+  @param[in] ImageBuffer        Image base address.
+  @param[in] NumberOfPage       Number of page.
+
+  @retval TRUE                  Register success.
+  @retval FALSE                 Register fail.
+
+**/
+BOOLEAN
+RegisterSmramProfileImage (
+  IN EFI_DEVICE_PATH_PROTOCOL   *FilePath,
+  IN PHYSICAL_ADDRESS           ImageBuffer,
+  IN UINTN                      NumberOfPage
+  );
+
+/**
+  Unregister SMM image from SMRAM profile.
+
+  @param[in] FilePath           File path of the image.
+  @param[in] ImageBuffer        Image base address.
+  @param[in] NumberOfPage       Number of page.
+
+  @retval TRUE                  Unregister success.
+  @retval FALSE                 Unregister fail.
+
+**/
+BOOLEAN
+UnregisterSmramProfileImage (
+  IN EFI_DEVICE_PATH_PROTOCOL   *FilePath,
+  IN PHYSICAL_ADDRESS           ImageBuffer,
+  IN UINTN                      NumberOfPage
+  );
 
 ///
 /// Structure for tracking paired information of registered Framework SMI handler
@@ -694,8 +730,10 @@ LoadImage (
     mFrameworkSmst->NumberOfCpus          = mNumberOfProcessors;
     mFrameworkSmst->CurrentlyExecutingCpu = gSmst->CurrentlyExecutingCpu;
 
+    RegisterSmramProfileImage (FilePath, DstBuffer, PageCount);
     Status = gBS->StartImage (*ImageHandle, NULL, NULL);
     if (EFI_ERROR (Status)) {
+      UnregisterSmramProfileImage (FilePath, DstBuffer, PageCount);
       mLoadPe32Image->UnLoadPeImage (mLoadPe32Image, *ImageHandle);
       *ImageHandle = NULL;
       FreePages ((VOID *)(UINTN)DstBuffer, PageCount);

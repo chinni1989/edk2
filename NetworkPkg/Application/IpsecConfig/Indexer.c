@@ -1,7 +1,7 @@
 /** @file
   The implementation of construct ENTRY_INDEXER in IpSecConfig application.
 
-  Copyright (c) 2009 - 2010, Intel Corporation. All rights reserved.<BR>
+  Copyright (c) 2009 - 2015, Intel Corporation. All rights reserved.<BR>
 
   This program and the accompanying materials
   are licensed and made available under the terms and conditions of the BSD License
@@ -234,7 +234,8 @@ ConstructPadIndexer (
       }
 
       Indexer->PadId.PeerIdValid = TRUE;
-      StrnCpy ((CHAR16 *) Indexer->PadId.Id.PeerId, ValueStr, ARRAY_SIZE (Indexer->PadId.Id.PeerId) - 1);
+      ZeroMem (Indexer->PadId.Id.PeerId, MAX_PEERID_LEN);
+      StrnCpyS ((CHAR16 *) Indexer->PadId.Id.PeerId, MAX_PEERID_LEN / sizeof (CHAR16), ValueStr, MAX_PEERID_LEN / sizeof (CHAR16) - 1);
     }
   }
 

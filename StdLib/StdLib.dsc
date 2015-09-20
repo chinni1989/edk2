@@ -8,8 +8,10 @@
 #
 # This package contains:
 #       Standard C Library.
+#       Sockets Library.
+#       Posix Library.
 #
-#   Copyright (c) 2010 - 2011, Intel Corporation. All rights reserved.<BR>
+#   Copyright (c) 2010 - 2014, Intel Corporation. All rights reserved.<BR>
 #   This program and the accompanying materials
 #   are licensed and made available under the terms and conditions of the BSD License
 #   which accompanies this distribution. The full text of the license may be found at
@@ -25,8 +27,8 @@
   PLATFORM_VERSION               = 0.01
   DSC_SPECIFICATION              = 0x00010006
   OUTPUT_DIRECTORY               = Build/StdLib
-  SUPPORTED_ARCHITECTURES        = IA32|IPF|X64|ARM
-  BUILD_TARGETS                  = DEBUG|RELEASE
+  SUPPORTED_ARCHITECTURES        = IA32|X64|ARM|AARCH64
+  BUILD_TARGETS                  = DEBUG|RELEASE|NOOPT
   SKUID_IDENTIFIER               = DEFAULT
 
 #
@@ -75,14 +77,13 @@
   PciCf8Lib|MdePkg/Library/BasePciCf8Lib/BasePciCf8Lib.inf
   SynchronizationLib|MdePkg/Library/BaseSynchronizationLib/BaseSynchronizationLib.inf
   UefiRuntimeLib|MdePkg/Library/UefiRuntimeLib/UefiRuntimeLib.inf
+  HobLib|MdePkg/Library/DxeHobLib/DxeHobLib.inf
+  FileHandleLib|MdePkg/Library/UefiFileHandleLib/UefiFileHandleLib.inf
   HiiLib|MdeModulePkg/Library/UefiHiiLib/UefiHiiLib.inf
   UefiHiiServicesLib|MdeModulePkg/Library/UefiHiiServicesLib/UefiHiiServicesLib.inf
   PerformanceLib|MdeModulePkg/Library/DxePerformanceLib/DxePerformanceLib.inf
-  HobLib|MdePkg/Library/DxeHobLib/DxeHobLib.inf
+  SortLib|MdeModulePkg/Library/UefiSortLib/UefiSortLib.inf
   ShellLib|ShellPkg/Library/UefiShellLib/UefiShellLib.inf
-  FileHandleLib|ShellPkg/Library/UefiFileHandleLib/UefiFileHandleLib.inf
-  SortLib|ShellPkg/Library/UefiSortLib/UefiSortLib.inf
-  PathLib|ShellPkg/Library/BasePathLib/BasePathLib.inf
 
 ###################################################################################################
 #
@@ -129,6 +130,7 @@
   StdLib/LibC/Containers/ContainerLib.inf
 
 # Additional libraries for POSIX functionality.
+  StdLib/PosixLib/PosixLib.inf
   StdLib/PosixLib/Err/LibErr.inf
   StdLib/PosixLib/Gen/LibGen.inf
   StdLib/PosixLib/Glob/LibGlob.inf

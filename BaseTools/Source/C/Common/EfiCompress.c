@@ -1,6 +1,10 @@
 /** @file
-
-Copyright (c) 2006 - 2008, Intel Corporation. All rights reserved.<BR>
+Compression routine. The compression algorithm is a mixture of LZ77 and Huffman 
+coding. LZ77 transforms the source data into a sequence of Original Characters 
+and Pointers to repeated strings. This sequence is further divided into Blocks 
+and Huffman codings are applied to each Block.
+  
+Copyright (c) 2006 - 2014, Intel Corporation. All rights reserved.<BR>
 This program and the accompanying materials                          
 are licensed and made available under the terms and conditions of the BSD License         
 which accompanies this distribution.  The full text of the license may be found at        
@@ -8,18 +12,6 @@ http://opensource.org/licenses/bsd-license.php
                                                                                           
 THE PROGRAM IS DISTRIBUTED UNDER THE BSD LICENSE ON AN "AS IS" BASIS,                     
 WITHOUT WARRANTIES OR REPRESENTATIONS OF ANY KIND, EITHER EXPRESS OR IMPLIED.             
-
-Module Name:
-
-  EfiCompress.c
-
-Abstract:
-
-  Compression routine. The compression algorithm is a mixture of
-  LZ77 and Huffman coding. LZ77 transforms the source data into a
-  sequence of Original Characters and Pointers to repeated strings.
-  This sequence is further divided into Blocks and Huffman codings
-  are applied to each Block.
 
 **/
 
@@ -416,6 +408,9 @@ Returns:
   UINT32      i;
   
   mText       = malloc (WNDSIZ * 2 + MAXMATCH);
+  if (mText == NULL) {
+    return EFI_OUT_OF_RESOURCES;
+  }
   for (i = 0 ; i < WNDSIZ * 2 + MAXMATCH; i ++) {
     mText[i] = 0;
   }
@@ -426,6 +421,10 @@ Returns:
   mParent     = malloc (WNDSIZ * 2 * sizeof(*mParent));
   mPrev       = malloc (WNDSIZ * 2 * sizeof(*mPrev));
   mNext       = malloc ((MAX_HASH_VAL + 1) * sizeof(*mNext));
+  if (mLevel == NULL || mChildCount == NULL || mPosition == NULL ||
+    mParent == NULL || mPrev == NULL || mNext == NULL) {
+    return EFI_OUT_OF_RESOURCES;
+  }
   
   mBufSiz = 16 * 1024U;
   while ((mBuf = malloc(mBufSiz)) == NULL) {

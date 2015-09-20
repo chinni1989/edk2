@@ -32,9 +32,8 @@ GetFirstPageAttribute (
   // Get the first entry of the table
   FirstEntry = *FirstLevelTableAddress;
 
-  if ((FirstEntry & TT_TYPE_MASK) == TT_TYPE_TABLE_ENTRY) {
+  if ((TableLevel != 3) && (FirstEntry & TT_TYPE_MASK) == TT_TYPE_TABLE_ENTRY) {
     // Only valid for Levels 0, 1 and 2
-    ASSERT (TableLevel < 3);
 
     // Get the attribute of the subsequent table
     return GetFirstPageAttribute ((UINT64*)(FirstEntry & TT_ADDRESS_MASK_DESCRIPTION_TABLE), TableLevel + 1);
@@ -280,6 +279,9 @@ GetMemoryRegionRec (
     if (!EFI_ERROR(Status)) {
       return EFI_SUCCESS;
     }
+
+    // Now we processed the table move to the next entry
+    BlockEntry++;
   } else if (EntryType == BlockEntryType) {
     // We have found the BlockEntry attached to the address. We save its start address (the start
     // address might be before the 'BaseAdress') and attributes

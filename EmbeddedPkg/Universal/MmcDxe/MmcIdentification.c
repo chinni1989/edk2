@@ -1,6 +1,6 @@
 /** @file
 *
-*  Copyright (c) 2011-2014, ARM Limited. All rights reserved.
+*  Copyright (c) 2011-2015, ARM Limited. All rights reserved.
 *
 *  This program and the accompanying materials
 *  are licensed and made available under the terms and conditions of the BSD License
@@ -11,8 +11,6 @@
 *  WITHOUT WARRANTIES OR REPRESENTATIONS OF ANY KIND, EITHER EXPRESS OR IMPLIED.
 *
 **/
-
-#include <Library/TimerLib.h>
 
 #include "Mmc.h"
 
@@ -222,7 +220,8 @@ MmcIdentificationMode (
     return Status;
   }
 
-  // Send CMD1 to get OCR (SD / MMC)
+  // Send CMD1 to get OCR (MMC)
+  // This command only valid for MMC and eMMC
   Status = MmcHost->SendCommand (MmcHost, MMC_CMD1, EMMC_CMD1_CAPACITY_GREATER_THAN_2GB);
   if (Status == EFI_SUCCESS) {
     Status = MmcHost->ReceiveResponse (MmcHost, MMC_RESPONSE_TYPE_OCR, (UINT32 *)&OcrResponse);
@@ -242,13 +241,11 @@ MmcIdentificationMode (
     else {
       MmcHostInstance->CardInfo.OCRData.AccessMode = 0x0;
     }
+    // Check whether MMC or eMMC
     if (OcrResponse.Raw == EMMC_CMD1_CAPACITY_GREATER_THAN_2GB ||
         OcrResponse.Raw == EMMC_CMD1_CAPACITY_LESS_THAN_2GB) {
       return EmmcIdentificationMode (MmcHostInstance, OcrResponse);
     }
-  } else {
-    DEBUG ((EFI_D_ERROR, "MmcIdentificationMode(MMC_CMD1) : Failed to send command, Status=%r.\n", Status));
-    return Status;
   }
 
   // Are we using SDIO ?
@@ -323,7 +320,7 @@ MmcIdentificationMode (
 
     if (!EFI_ERROR (Status)) {
       if (!MmcHostInstance->CardInfo.OCRData.PowerUp) {
-        MicroSecondDelay (1);
+        gBS->Stall (1);
         Timeout--;
       } else {
         if ((MmcHostInstance->CardInfo.CardType == SD_CARD_2) && (MmcHostInstance->CardInfo.OCRData.AccessMode & BIT1)) {
@@ -333,7 +330,7 @@ MmcIdentificationMode (
         break;  // The MMC/SD card is ready. Continue the Identification Mode
       }
     } else {
-      MicroSecondDelay (1);
+      gBS->Stall (1);
       Timeout--;
     }
   }

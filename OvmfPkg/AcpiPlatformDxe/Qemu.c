@@ -1,9 +1,9 @@
 /** @file
   OVMF ACPI QEMU support
 
-  Copyright (c) 2008 - 2012, Intel Corporation. All rights reserved.<BR>
+  Copyright (c) 2008 - 2014, Intel Corporation. All rights reserved.<BR>
 
-  Copyright (C) 2012, Red Hat, Inc.
+  Copyright (C) 2012-2014, Red Hat, Inc.
 
   This program and the accompanying materials
   are licensed and made available under the terms and conditions of the BSD License
@@ -16,11 +16,13 @@
 **/
 
 #include "AcpiPlatform.h"
+#include "QemuLoader.h"
 #include <Library/BaseMemoryLib.h>
 #include <Library/MemoryAllocationLib.h>
 #include <Library/QemuFwCfgLib.h>
 #include <Library/DxeServicesTableLib.h>
 #include <Library/PcdLib.h>
+#include <Library/OrderedCollectionLib.h>
 #include <IndustryStandard/Acpi.h>
 
 BOOLEAN
@@ -514,4 +516,3 @@ QemuInstallAcpiTable (
            TableKey
            );
 }
-

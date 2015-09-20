@@ -1,6 +1,7 @@
 /** @file
+Elf convert solution
 
-Copyright (c) 2010 - 2011, Intel Corporation. All rights reserved.<BR>
+Copyright (c) 2010 - 2014, Intel Corporation. All rights reserved.<BR>
 
 This program and the accompanying materials are licensed and made available 
 under the terms and conditions of the BSD License which accompanies this 
@@ -95,11 +96,11 @@ CoffAddFixup(
 
     mCoffFile = realloc (
       mCoffFile,
-      mCoffOffset + sizeof(EFI_IMAGE_BASE_RELOCATION) + 2*0x1000
+      mCoffOffset + sizeof(EFI_IMAGE_BASE_RELOCATION) + 2 * MAX_COFF_ALIGNMENT
       );
     memset (
       mCoffFile + mCoffOffset, 0,
-      sizeof(EFI_IMAGE_BASE_RELOCATION) + 2*0x1000
+      sizeof(EFI_IMAGE_BASE_RELOCATION) + 2 * MAX_COFF_ALIGNMENT
       );
 
     mCoffBaseRel = (EFI_IMAGE_BASE_RELOCATION*)(mCoffFile + mCoffOffset);

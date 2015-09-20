@@ -1,20 +1,18 @@
 /** @file
   The firmware file related definitions in PI.
+  
+  @par Revision Reference:
+  Version 1.4.
 
-  Copyright (c) 2006 - 2013, Intel Corporation. All rights reserved.<BR>
+  Copyright (c) 2006 - 2015, Intel Corporation. All rights reserved.<BR>
 
   This program and the accompanying materials are licensed and made available
   under the terms and conditions of the BSD License which accompanies this
-  distribution.  The full text of the license may be found at:
+  distribution.  The full text of the license may be found at
     http://opensource.org/licenses/bsd-license.php
 
   THE PROGRAM IS DISTRIBUTED UNDER THE BSD LICENSE ON AN "AS IS" BASIS,
   WITHOUT WARRANTIES OR REPRESENTATIONS OF ANY KIND, EITHER EXPRESS OR IMPLIED.
-
-  File Name: PiFirmwareFile.h
-
-  @par Revision Reference:
-  Version 1.0.
 
 **/
 
@@ -112,7 +110,7 @@ typedef struct {
   EFI_FFS_FILE_ATTRIBUTES Attributes;
   UINT8                   Size[3];
   EFI_FFS_FILE_STATE      State;
-  UINT32                  ExtendedSize;
+  UINT64                  ExtendedSize;
 } EFI_FFS_FILE_HEADER2;
 
 #define MAX_FFS_SIZE        0x1000000
